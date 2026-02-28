@@ -182,7 +182,7 @@ class BuilderOutput(BaseModel):
     status: str  # "completed" | "blocked"
     summary: str = ""
     changed_files: list[str] = Field(default_factory=list)
-    check_results: dict[str, str] = Field(default_factory=dict)
+    check_results: dict[str, Any] = Field(default_factory=dict)
     risks: list[str] = Field(default_factory=list)
     handoff_notes: str = ""
 
