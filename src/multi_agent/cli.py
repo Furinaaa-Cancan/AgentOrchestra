@@ -330,8 +330,8 @@ def _show_waiting(app, config):
         role = info.get("role", "builder")
         agent = info.get("agent", "?")
 
-    click.echo(f"📋 Open in your IDE:  .multi-agent/TASK.md")
-    click.echo(f"   Waiting for {role} ({agent}) to write outbox/{role}.json")
+    click.echo(f"📋 在 {agent} IDE 里对 AI 说:")
+    click.echo(f'   "帮我完成 @.multi-agent/TASK.md 里的任务"')
     click.echo()
 
 
@@ -387,7 +387,8 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0):
                         next_info = next_snap.tasks[0].interrupts[0].value
                         next_role = next_info.get("role", "?")
                         next_agent = next_info.get("agent", "?")
-                        click.echo(f"[{mins:02d}:{secs:02d}] ⏳ Now waiting for {next_role} ({next_agent})...")
+                        click.echo(f"[{mins:02d}:{secs:02d}] 📋 在 {next_agent} IDE 里对 AI 说:")
+                        click.echo(f'             "帮我完成 @.multi-agent/TASK.md 里的任务"')
                     break
 
             time.sleep(interval)

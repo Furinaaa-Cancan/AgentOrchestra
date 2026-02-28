@@ -63,56 +63,28 @@ class WorkflowState(TypedDict, total=False):
 # ── TASK.md — Universal Entry Point ──────────────────────
 
 def _write_task_md(state: dict, builder_id: str, reviewer_id: str, current_role: str):
-    """Write TASK.md — a single file any IDE can read to understand the full context.
+    """Write TASK.md — THE single self-contained file for the IDE AI.
 
-    This is the key UX improvement: open any project in any IDE,
-    read TASK.md, and you immediately know what to do.
+    TASK.md embeds the full prompt content inline so the IDE AI gets
+    everything it needs from ONE file reference. No jumping to inbox files.
     """
-    from multi_agent.config import workspace_dir
-    task_id = state.get("task_id", "?")
-    requirement = state.get("requirement", "?")
-    retry_count = state.get("retry_count", 0)
-    retry_budget = state.get("retry_budget", 2)
+    from multi_agent.config import workspace_dir, inbox_dir
 
-    role_emoji = {"builder": "🔧", "reviewer": "🔍"}.get(current_role, "⏳")
-
-    ws = workspace_dir()
-    inbox_path = f".multi-agent/inbox/{current_role}.md"
     outbox_path = f".multi-agent/outbox/{current_role}.json"
-    active_id = builder_id if current_role == "builder" else reviewer_id
-    waiting_id = reviewer_id if current_role == "builder" else builder_id
+
+    # Read the inbox prompt that was just written
+    inbox_file = inbox_dir() / f"{current_role}.md"
+    prompt_content = ""
+    if inbox_file.exists():
+        prompt_content = inbox_file.read_text(encoding="utf-8")
 
     lines = [
-        f"# {role_emoji} TASK.md",
+        prompt_content,
         "",
-        f"> **当前需要 `{active_id}` 执行 {current_role} 任务。**",
+        "---",
         "",
-        f"## 立即行动",
-        "",
-        f"**读取任务描述** (可以用 @file 引用):",
-        "",
-        f"```",
-        f"{inbox_path}",
-        f"```",
-        "",
-        f"**完成后，保存结果到:**",
-        "",
-        f"```",
-        f"{outbox_path}",
-        f"```",
-        "",
-        f"> 终端会自动检测输出并推进流程，不需要手动运行任何命令。",
-        "",
-        f"---",
-        "",
-        f"| 字段 | 值 |",
-        f"|------|----|",
-        f"| 任务 | {task_id} |",
-        f"| 需求 | {requirement} |",
-        f"| 当前步骤 | **{current_role.upper()}** |",
-        f"| Builder | {builder_id} |",
-        f"| Reviewer | {reviewer_id} |",
-        f"| 重试 | {retry_count}/{retry_budget} |",
+        "> **完成后，把上面要求的 JSON 结果保存到这个文件，终端会自动推进流程:**",
+        f"> `{outbox_path}`",
         "",
     ]
 
