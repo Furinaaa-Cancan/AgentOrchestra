@@ -31,12 +31,18 @@ def write_inbox(agent_id: str, content: str) -> Path:
 
 
 def read_outbox(agent_id: str) -> dict | None:
-    """Read and parse outbox/{agent_id}.json. Returns None if not found."""
+    """Read and parse outbox/{agent_id}.json. Returns None if not found or corrupt."""
     path = outbox_dir() / f"{agent_id}.json"
     if not path.exists():
         return None
-    with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return None
+        return data
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 def write_outbox(agent_id: str, data: dict) -> Path:

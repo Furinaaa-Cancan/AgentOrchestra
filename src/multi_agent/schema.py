@@ -165,8 +165,14 @@ class SkillContract(BaseModel):
 
     @classmethod
     def from_yaml(cls, data: dict) -> "SkillContract":
+        data = {**data}  # shallow copy to avoid mutating caller's dict
         compat = data.get("compatibility", {})
-        agents = compat.pop("supported_agents", []) if isinstance(compat, dict) else []
+        if isinstance(compat, dict):
+            compat = {**compat}  # copy before pop
+            agents = compat.pop("supported_agents", [])
+            data["compatibility"] = compat
+        else:
+            agents = []
         return cls(supported_agents=agents, **data)
 
 

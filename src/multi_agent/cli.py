@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
-import uuid
 from pathlib import Path
 
 import click
@@ -14,7 +13,7 @@ from multi_agent.config import store_db_path, workspace_dir
 from multi_agent.workspace import (
     ensure_workspace,
     read_outbox,
-    write_outbox,
+    save_task_yaml,
 )
 
 
@@ -29,10 +28,6 @@ def _make_config(task_id: str) -> dict:
 def _generate_task_id(requirement: str) -> str:
     h = hashlib.sha256(requirement.encode()).hexdigest()[:8]
     return f"task-{h}"
-
-
-def _generate_trace_id() -> str:
-    return uuid.uuid4().hex
 
 
 @click.group()
@@ -79,12 +74,15 @@ def go(requirement: str, skill: str, task_id: str | None, retry_budget: int, tim
     app = compile_graph()
     config = _make_config(task_id)
 
+    # Save task marker for auto-detection
+    save_task_yaml(task_id, {"task_id": task_id, "skill": skill, "status": "active"})
+
     # Run until first interrupt (plan → build interrupt)
+    from langgraph.errors import GraphInterrupt
     try:
         result = app.invoke(initial_state, config)
-    except Exception as e:
-        # LangGraph raises GraphInterrupt on interrupt() — this is normal
-        pass
+    except GraphInterrupt:
+        pass  # Normal — graph paused at interrupt()
 
     # Show next step
     snapshot = app.get_state(config)
@@ -166,10 +164,11 @@ def done(task_id: str | None, file_path: str | None):
 
     # Resume the graph with the agent output
     from langgraph.types import Command
+    from langgraph.errors import GraphInterrupt
     try:
         result = app.invoke(Command(resume=output_data), config)
-    except Exception:
-        pass
+    except GraphInterrupt:
+        pass  # Normal — graph paused at next interrupt()
 
     # Check new state
     snapshot = app.get_state(config)
@@ -245,8 +244,10 @@ def cancel(task_id: str | None, reason: str):
             click.echo("No active task to cancel.")
             return
 
-    # We can't easily cancel a langgraph checkpoint, but we can
-    # update the dashboard and leave a marker
+    # Mark task YAML as cancelled so auto-detect skips it
+    save_task_yaml(task_id, {"task_id": task_id, "status": "cancelled", "reason": reason})
+
+    # Update the dashboard
     from multi_agent.dashboard import write_dashboard
     write_dashboard(
         task_id=task_id,
@@ -260,16 +261,22 @@ def cancel(task_id: str | None, reason: str):
 
 
 def _detect_active_task(app) -> str | None:
-    """Try to detect the active task from checkpoint storage.
-
-    Simple heuristic: look for task YAML files in workspace.
-    """
+    """Detect the active task from task YAML markers in workspace."""
     from multi_agent.config import tasks_dir
     td = tasks_dir()
     if not td.exists():
         return None
-    yamls = list(td.glob("*.yaml"))
-    if len(yamls) == 1:
+    yamls = sorted(td.glob("*.yaml"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for yf in yamls:
+        try:
+            import yaml
+            data = yaml.safe_load(yf.read_text(encoding="utf-8")) or {}
+            if data.get("status") == "active":
+                return yf.stem
+        except Exception:
+            continue
+    # Fallback: return most recent
+    if yamls:
         return yamls[0].stem
     return None
 

@@ -67,8 +67,12 @@ def plan_node(state: WorkflowState) -> dict:
     contract = load_contract(skill_id)
     agents = load_agents()
 
-    # Determine required capabilities for builder
+    # Determine required capabilities from contract triggers or default
     required_caps = ["implementation"]
+    for trigger in contract.triggers:
+        if "plan" in trigger.lower() or "decompose" in trigger.lower():
+            required_caps = ["planning"]
+            break
 
     # Pick builder agent
     builder = pick_agent(agents, contract, required_caps, role="builder")
@@ -150,6 +154,7 @@ def build_node(state: WorkflowState) -> dict:
     if errors:
         return {
             "error": f"Builder output invalid: {'; '.join(errors)}",
+            "final_status": "failed",
             "conversation": [{"role": "builder", "output": "INVALID"}],
         }
 
@@ -298,7 +303,14 @@ def decide_node(state: WorkflowState) -> dict:
     }
 
 
-# ── Routing ───────────────────────────────────────────────
+# ── Routing ───────────────────────────────────────────
+
+def _route_after_build(state: WorkflowState) -> str:
+    """Skip review if build_node returned an error."""
+    if state.get("error") or state.get("final_status") in ("failed", "cancelled"):
+        return "end"
+    return "review"
+
 
 def route_decision(state: WorkflowState) -> str:
     if state.get("error"):
@@ -321,7 +333,10 @@ def build_graph() -> StateGraph:
 
     g.add_edge(START, "plan")
     g.add_edge("plan", "build")
-    g.add_edge("build", "review")
+    g.add_conditional_edges("build", _route_after_build, {
+        "review": "review",
+        "end": END,
+    })
     g.add_edge("review", "decide")
     g.add_conditional_edges("decide", route_decision, {
         "end": END,
