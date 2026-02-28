@@ -49,13 +49,15 @@ class TestDecideNode:
         s.update(overrides)
         return s
 
+    @patch("multi_agent.graph.archive_conversation")
     @patch("multi_agent.graph.write_dashboard")
-    def test_approve(self, mock_dash):
+    def test_approve(self, mock_dash, mock_archive):
         state = self._base_state(
             reviewer_output={"decision": "approve", "summary": "LGTM"}
         )
         result = decide_node(state)
         assert result["final_status"] == "approved"
+        mock_archive.assert_called_once()
 
     @patch("multi_agent.graph.write_dashboard")
     def test_reject_with_budget(self, mock_dash):
@@ -68,8 +70,9 @@ class TestDecideNode:
         assert result["retry_count"] == 1
         assert "final_status" not in result
 
+    @patch("multi_agent.graph.archive_conversation")
     @patch("multi_agent.graph.write_dashboard")
-    def test_reject_budget_exhausted(self, mock_dash):
+    def test_reject_budget_exhausted(self, mock_dash, mock_archive):
         state = self._base_state(
             reviewer_output={"decision": "reject", "feedback": "still broken"},
             retry_count=2,
@@ -78,6 +81,7 @@ class TestDecideNode:
         result = decide_node(state)
         assert result["error"] == "BUDGET_EXHAUSTED"
         assert result["final_status"] == "escalated"
+        mock_archive.assert_called_once()
 
 
 class TestRouteAfterBuild:

@@ -23,6 +23,7 @@ from multi_agent.schema import (
     Task,
 )
 from multi_agent.workspace import (
+    archive_conversation,
     clear_outbox,
     write_inbox,
 )
@@ -313,17 +314,20 @@ def decide_node(state: WorkflowState) -> dict:
     decision = reviewer_output.get("decision", "reject")
 
     if decision == "approve":
+        final_entry = {"role": "orchestrator", "action": "approved"}
+        full_convo = state.get("conversation", []) + [final_entry]
         write_dashboard(
             task_id=state["task_id"],
             done_criteria=state.get("done_criteria", []),
             current_agent=state.get("reviewer_id", ""),
             current_role="done",
-            conversation=state.get("conversation", []),
+            conversation=full_convo,
             status_msg="✅ 审查通过，任务完成",
         )
+        archive_conversation(state["task_id"], full_convo)
         return {
             "final_status": "approved",
-            "conversation": [{"role": "orchestrator", "action": "approved"}],
+            "conversation": [final_entry],
         }
 
     # Reject → check retry budget
@@ -331,21 +335,22 @@ def decide_node(state: WorkflowState) -> dict:
     budget = state.get("retry_budget", 2)
 
     if retry_count > budget:
+        final_entry = {"role": "orchestrator", "action": "escalated", "reason": "budget exhausted"}
+        full_convo = state.get("conversation", []) + [final_entry]
         write_dashboard(
             task_id=state["task_id"],
             done_criteria=state.get("done_criteria", []),
             current_agent=state.get("reviewer_id", ""),
             current_role="escalated",
-            conversation=state.get("conversation", []),
+            conversation=full_convo,
             error=f"重试预算耗尽 ({retry_count - 1}/{budget})",
         )
+        archive_conversation(state["task_id"], full_convo)
         return {
             "error": "BUDGET_EXHAUSTED",
             "retry_count": retry_count,
             "final_status": "escalated",
-            "conversation": [
-                {"role": "orchestrator", "action": "escalated", "reason": "budget exhausted"}
-            ],
+            "conversation": [final_entry],
         }
 
     # Has budget → retry with feedback
