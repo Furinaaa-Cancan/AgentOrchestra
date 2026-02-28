@@ -42,14 +42,14 @@ class OutboxPoller:
             except OSError:
                 continue  # File deleted between _scan and stat
             if role not in self._known or self._known[role] < mtime:
-                self._known[role] = mtime
                 try:
                     with path.open("r", encoding="utf-8") as f:
                         data = json.load(f)
                     if isinstance(data, dict):
+                        self._known[role] = mtime
                         results.append((role, data))
                 except (json.JSONDecodeError, OSError):
-                    pass
+                    pass  # Partial write — retry on next poll
         return results
 
     def watch(self, callback, *, stop_after: int | None = None):
