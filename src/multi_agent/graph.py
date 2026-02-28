@@ -251,7 +251,7 @@ def build_node(state: WorkflowState) -> dict:
         contract=contract,
         agent_id=reviewer_id,
         builder_output=result,
-        builder_agent=builder_id,
+        builder_id=builder_id,
     )
 
     clear_outbox("reviewer")

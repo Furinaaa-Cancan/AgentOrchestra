@@ -9,7 +9,6 @@ import time
 
 import click
 
-from multi_agent.config import workspace_dir
 from multi_agent.workspace import (
     clear_inbox,
     clear_outbox,
@@ -249,14 +248,11 @@ def status(task_id: str | None):
         click.echo(f"   🏁 Final: {vals['final_status']}")
 
     if snapshot.next:
-        click.echo(f"   ⏸️  Waiting at: {snapshot.next[0]}")
-        click.echo(f"   📄 Inbox: .multi-agent/inbox/{current_role}.md")
+        agent = vals.get("builder_id" if current_role == "builder" else "reviewer_id", "?")
+        click.echo(f"   ⏸️  Waiting for {current_role} ({agent})")
+        click.echo(f'   📋 在 {agent} IDE 里说: "帮我完成 @.multi-agent/TASK.md 里的任务"')
     else:
         click.echo("   ✅ Graph complete")
-
-    dp = workspace_dir() / "TASK.md"
-    if dp.exists():
-        click.echo(f"\n📋 TASK.md: {dp}")
 
 
 @main.command()

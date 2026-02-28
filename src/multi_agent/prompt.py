@@ -57,7 +57,7 @@ def render_reviewer_prompt(
     contract: SkillContract,
     agent_id: str,
     builder_output: dict,
-    builder_agent: str,
+    builder_id: str,
 ) -> str:
     """Render the reviewer prompt from reviewer.md.j2 template."""
     env = _env()
@@ -67,5 +67,5 @@ def render_reviewer_prompt(
         contract=contract,
         agent_id=agent_id,
         builder_output=builder_output,
-        builder_agent=builder_agent,
+        builder_id=builder_id,
     )
