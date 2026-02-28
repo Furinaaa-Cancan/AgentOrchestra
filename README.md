@@ -2,9 +2,9 @@
 
 # AgentOrchestra
 
-**Multi-Agent Orchestration for IDE-Based AI Coding Assistants**
+**IDE-Agnostic Multi-Agent Orchestration Framework**
 
-*Coordinate Codex, Windsurf, and Antigravity through a shared workspace with LangGraph-powered state management*
+*Coordinate ANY combination of AI coding assistants — Windsurf, Cursor, Codex, Kiro, Antigravity, Copilot, Aider, and more — through role-based collaboration with LangGraph-powered state management*
 
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
@@ -20,46 +20,78 @@
 
 ## What is AgentOrchestra?
 
-AgentOrchestra is an open-source orchestration framework that coordinates multiple IDE-based AI coding assistants (Codex, Windsurf, Antigravity, etc.) to collaborate on software development tasks through a structured **Plan → Build → Review → Decide** pipeline.
+AgentOrchestra is an open-source orchestration framework that coordinates multiple IDE-based AI coding assistants to collaborate on software tasks through a **Plan → Build → Review → Decide** pipeline.
 
-Unlike traditional multi-agent frameworks that assume agents are API-callable LLMs, AgentOrchestra is designed for the real-world scenario where **AI agents live inside IDEs** and **humans are the communication bridge**. It minimizes manual friction to as few as **2 steps per agent cycle**.
+### Core Design Principle
+
+> **The system doesn't care which IDE you use. It only cares about ROLES.**
+
+Unlike frameworks that hardcode specific AI tools, AgentOrchestra uses **role-based communication**:
+- `builder.md` — prompt for whoever is building (could be Windsurf, Cursor, Kiro, anything)
+- `reviewer.md` — prompt for whoever is reviewing (must be a different IDE)
+- `TASK.md` — single entry point that tells ANY IDE what's happening and what to do
+
+You decide which IDE fills which role. The system handles everything else.
 
 ### The Problem
 
-Modern AI coding assistants (Windsurf Cascade, GitHub Codex, Cursor, etc.) are powerful individually, but coordinating them on a single task requires:
+Modern AI coding assistants are powerful individually, but coordinating them requires:
 - Manually copying prompts between IDEs
-- Tracking which agent should do what next
-- Remembering to pass review feedback back to builders
-- Managing retry budgets and timeouts
+- Tracking whose turn it is
+- Passing review feedback back to builders
+- Managing retry budgets
 - No persistent state across sessions
 
 ### The Solution
 
-AgentOrchestra provides:
-- **Shared Workspace** (`.multi-agent/inbox/` and `outbox/`) — agents communicate via files
-- **4-Node LangGraph Graph** — compact `plan → build → review → decide` cycle with automatic retry
-- **Cross-Model Adversarial Review** — builder and reviewer are always different agents
-- **Goal Dashboard** — real-time progress tracking in `dashboard.md`
-- **Persistent Checkpoints** — resume from any point via SQLite-backed LangGraph checkpointer
+- **Role-Based Workspace** — `inbox/builder.md` and `inbox/reviewer.md` (not tied to any specific IDE)
+- **TASK.md** — open in any IDE, instantly know what to do
+- **`--builder` / `--reviewer` flags** — you choose which IDE does what
+- **4-Node LangGraph Graph** — compact `plan → build → review → decide` cycle
+- **Cross-Model Adversarial Review** — builder and reviewer must be different IDEs
+- **Persistent Checkpoints** — resume from any point via SQLite
 - **2-Step CLI** — `ma go "requirement"` → `ma done`
 
-## Research Foundation
+### Supported IDEs
 
-This architecture is grounded in **7 peer-reviewed papers** and **3 industry benchmarks**:
+Any IDE with an AI assistant works. Tested with:
 
-| Paper | Venue | Key Insight Applied |
-|-------|-------|-------------------|
-| Evolving Orchestration | **NeurIPS 2025** | Compact cyclic graphs outperform complex ones |
-| ChatDev | **ACL 2024** | Chat Chain role-pair dialogues |
-| HULA | **ICSE 2025** | Human-in-the-loop with minimal friction |
-| Agentless | **FSE 2025** | Simple 3-phase pipeline beats complex agents |
-| OrchVis | arXiv 2025 | Goal-driven visualization + adaptive autonomy |
-| ALMAS | arXiv 2025 | Agile role alignment for SE agents |
-| MapCoder | **ACL 2024** | 4-agent recall→plan→code→debug pipeline |
-
-> **Core finding**: RL-trained orchestrators converge to compact cyclic structures. Our 4-node graph is not a simplification — it's the empirically optimal structure.
+| IDE | Builder | Reviewer | Notes |
+|-----|---------|----------|-------|
+| **Windsurf** (Cascade) | ✅ | ✅ | Full support |
+| **Cursor** | ✅ | ✅ | Full support |
+| **GitHub Codex** | ✅ | ✅ | Full support |
+| **Kiro** | ✅ | ✅ | Full support |
+| **Antigravity** | ✅ | ✅ | Full support |
+| **Copilot** | ✅ | ✅ | Via @file reference |
+| **Aider** | ✅ | ✅ | CLI-based |
+| **Cline** | ✅ | ✅ | Full support |
+| *Any other IDE* | ✅ | ✅ | Just add to agents.yaml |
 
 ## Architecture
+
+### Communication Flow
+
+```
+  You (in IDE A: builder)           You (in IDE B: reviewer)
+       │                                  │
+       │  ┌──────────────────────┐        │
+       │  │   .multi-agent/      │        │
+       │  │   ├── TASK.md ◄──────┼────────┤  ← Both IDEs read this
+       │  │   ├── inbox/         │        │
+       ├──┼──►│   ├── builder.md │        │  ← Builder reads this
+       │  │   │   └── reviewer.md├────────┤  ← Reviewer reads this
+       │  │   ├── outbox/        │        │
+       ├──┼──►│   ├── builder.json        │  ← Builder writes this
+       │  │   │   └── reviewer.json◄──────┤  ← Reviewer writes this
+       │  │   └── dashboard.md   │        │
+       │  └──────────────────────┘        │
+       │                                  │
+       │         ma done ─────────────────│
+       │                                  │
+```
+
+### 4-Node Graph
 
 ```
                     ┌─────────┐
@@ -67,57 +99,22 @@ This architecture is grounded in **7 peer-reviewed papers** and **3 industry ben
                     └────┬────┘
                          │
                     ┌────▼────┐
-               ┌───▶│  plan   │  Load contract, pick agent, write inbox prompt
+               ┌───▶│  plan   │  Resolve roles, write builder prompt
                │    └────┬────┘
                │         │
                │    ┌────▼────┐
-               │    │  build  │  interrupt() — wait for builder agent
+               │    │  build  │  interrupt() — wait for builder
                │    └────┬────┘
                │         │
                │    ┌────▼────┐
-               │    │ review  │  interrupt() — wait for reviewer agent
+               │    │ review  │  interrupt() — wait for reviewer
                │    └────┬────┘
                │         │
                │    ┌────▼────┐
                │    │ decide  │  approve → END, reject → retry
                │    └────┬────┘
                │         │
-               │    ┌────▼────┐
-               └────│  retry  │  (with reviewer feedback injected)
-                    └─────────┘
-```
-
-### Communication Flow
-
-```
-Orchestrator                        IDE Agent (e.g. Windsurf)
-    │                                     │
-    │── write inbox/windsurf.md ─────────▶│  (user opens in IDE)
-    │                                     │  (agent works...)
-    │◀── ma done (submit output) ─────────│
-    │                                     │
-    │── write inbox/codex.md ────────────▶│  (reviewer, different agent)
-    │                                     │
-    │◀── ma done (submit review) ─────────│
-    │                                     │
-    │   [approve] → DONE                  │
-    │   [reject]  → retry with feedback   │
-```
-
-### Shared Workspace Structure
-
-```
-.multi-agent/
-├── inbox/              ← Agent prompts (orchestrator writes, agent reads)
-│   ├── windsurf.md     ← Builder prompt with task details
-│   └── codex.md        ← Reviewer prompt with builder output
-├── outbox/             ← Agent outputs (agent writes, orchestrator reads)
-│   ├── windsurf.json   ← Builder result
-│   └── codex.json      ← Review decision
-├── dashboard.md        ← Real-time goal progress panel
-├── tasks/              ← Task state YAML files
-├── history/            ← Conversation history archive
-└── store.db            ← LangGraph checkpoint + audit storage
+               └─────────┘  (with reviewer feedback injected)
 ```
 
 ## Quick Start
@@ -131,139 +128,152 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
+### Configure Your IDEs
+
+Edit `agents/agents.yaml`:
+
+```yaml
+agents:
+  - id: windsurf
+    capabilities: [planning, implementation, testing, docs]
+  - id: cursor
+    capabilities: [planning, implementation, testing, review, docs]
+  - id: kiro
+    capabilities: [planning, implementation, testing, review]
+  # Add any IDE you want here
+
+defaults:
+  builder: windsurf    # Which IDE builds by default
+  reviewer: cursor     # Which IDE reviews by default
+```
+
 ### Usage
 
-**Step 1: Start a task**
+**Step 1: Start a task — specify which IDEs to use**
 
 ```bash
-ma go "Implement POST /users endpoint with FastAPI" --skill code-implement
+# Use defaults from agents.yaml
+ma go "Implement POST /users endpoint"
+
+# Or explicitly choose IDEs
+ma go "Implement POST /users endpoint" --builder windsurf --reviewer cursor
+
+# Or any combination
+ma go "Fix auth bug" --builder kiro --reviewer codex
 ```
 
-This will:
-1. Load the `code-implement` skill contract
-2. Select the best builder agent (e.g., `windsurf`)
-3. Generate a structured prompt at `.multi-agent/inbox/windsurf.md`
-4. Create a goal dashboard at `.multi-agent/dashboard.md`
-5. Pause the graph, waiting for builder output
+**Step 2: Open TASK.md in your builder IDE**
 
-**Step 2: Let the agent work**
+The file `.multi-agent/TASK.md` tells you exactly what to do:
 
-Open `.multi-agent/inbox/windsurf.md` in your IDE (or reference it via `@file`). The agent sees:
-- Task description and completion criteria
-- Quality checks to run
-- Expected JSON output format
-- Self-check instructions (Reflection pattern)
+```
+## Current State
+| Current Step | BUILDER |
+| Builder      | windsurf |
+| Reviewer     | cursor |
 
-**Step 3: Submit the result**
+## What to Do Now
+If you are windsurf (or whichever IDE is acting as builder):
+1. Read the prompt: .multi-agent/inbox/builder.md
+2. Do the implementation work
+3. Save output to: .multi-agent/outbox/builder.json
+4. Run: ma done
+```
+
+**Step 3: Submit and advance**
 
 ```bash
-ma done
+ma done    # Reads from outbox/builder.json automatically
 ```
 
-This reads from `.multi-agent/outbox/windsurf.json` (or stdin), advances the graph to the `review` node, and automatically:
-- Selects a **different** agent as reviewer (cross-model adversarial review)
-- Generates a reviewer prompt with the builder's output included
-- Pauses again, waiting for review
+The system advances to the review phase. TASK.md updates to show it's the reviewer's turn.
 
-**Step 4: Submit the review**
+**Step 4: Open TASK.md in your reviewer IDE**
 
 ```bash
-ma done
+ma done    # Reads from outbox/reviewer.json automatically
 ```
 
-If approved → task complete. If rejected → automatically retries with reviewer feedback injected into the next builder prompt.
+If approved → task complete. If rejected → retries with feedback.
+
+### Full Example
+
+```bash
+$ ma go "Add input validation" --builder windsurf --reviewer cursor
+🚀 Starting task: task-a1b2c3d4
+   Skill: code-implement
+⏸️  Graph paused at: build
+   Role: builder
+   IDE:  windsurf
+   Inbox: .multi-agent/inbox/builder.md
+
+# ... windsurf works, saves to outbox/builder.json ...
+
+$ ma done
+📤 Submitting builder output for task task-a1b2c3d4 (IDE: windsurf)
+⏸️  Graph paused at: review
+   Role: reviewer
+   IDE:  cursor
+   Inbox: .multi-agent/inbox/reviewer.md
+
+# ... cursor reviews, saves to outbox/reviewer.json ...
+
+$ ma done
+📤 Submitting reviewer output for task task-a1b2c3d4 (IDE: cursor)
+🏁 Task finished. Status: approved
+```
 
 ### CLI Reference
 
 | Command | Description |
 |---------|-------------|
-| `ma go "requirement"` | Start a new task from natural language |
-| `ma done` | Submit agent output and advance the graph |
+| `ma go "requirement"` | Start a new task |
+| `ma go "req" --builder X --reviewer Y` | Start with specific IDEs |
+| `ma done` | Submit output and advance |
 | `ma status` | Show current task status |
 | `ma cancel` | Cancel the current task |
 
-### Example: Full Cycle
+## Research Foundation
 
-```bash
-$ ma go "Implement input validation for user registration" --skill code-implement
-🚀 Starting task: task-a1b2c3d4
-   Skill: code-implement
-⏸️  Graph paused at: build
-   Agent: windsurf
-   Inbox: .multi-agent/inbox/windsurf.md
+This architecture is grounded in **7 peer-reviewed papers**:
 
-# ... agent works, outputs to outbox ...
-
-$ ma done
-📤 Submitting output for task task-a1b2c3d4 (agent: windsurf)
-⏸️  Graph paused at: review
-   Agent: codex
-   Inbox: .multi-agent/inbox/codex.md
-
-# ... reviewer reviews ...
-
-$ ma done
-📤 Submitting output for task task-a1b2c3d4 (agent: codex)
-🏁 Task finished. Status: approved
-```
-
-## Project Structure
-
-```
-AgentOrchestra/
-├── pyproject.toml                  # Package config, `ma` CLI entry point
-├── src/multi_agent/
-│   ├── schema.py                   # Pydantic models (Task, SkillContract, AgentOutput)
-│   ├── graph.py                    # 4-node LangGraph workflow
-│   ├── cli.py                      # CLI: ma go / ma done / ma status / ma cancel
-│   ├── config.py                   # Unified path configuration
-│   ├── contract.py                 # Skill contract loader + validation
-│   ├── router.py                   # Agent routing (cross-model adversarial review)
-│   ├── workspace.py                # .multi-agent/ directory management
-│   ├── prompt.py                   # Jinja2 prompt rendering
-│   ├── dashboard.py                # Goal dashboard generator
-│   └── watcher.py                  # File watcher (outbox polling)
-├── templates/
-│   ├── builder.md.j2               # Builder prompt template
-│   └── reviewer.md.j2              # Reviewer prompt template
-├── skills/                         # Skill contracts (YAML)
-│   ├── code-implement/contract.yaml
-│   ├── test-and-review/contract.yaml
-│   └── task-decompose/contract.yaml
-├── agents/profiles.json            # Agent capability profiles
-├── tests/                          # 41 tests
-└── LICENSE                         # CC BY-NC-SA 4.0
-```
+| Paper | Venue | Key Insight Applied |
+|-------|-------|-------------------|
+| Evolving Orchestration | **NeurIPS 2025** | Compact cyclic graphs outperform complex ones |
+| ChatDev | **ACL 2024** | Chat Chain role-pair dialogues |
+| HULA | **ICSE 2025** | Human-in-the-loop with minimal friction |
+| Agentless | **FSE 2025** | Simple 3-phase pipeline beats complex agents |
+| OrchVis | arXiv 2025 | Goal-driven visualization + adaptive autonomy |
+| ALMAS | arXiv 2025 | Agile role alignment for SE agents |
+| MapCoder | **ACL 2024** | 4-agent recall→plan→code→debug pipeline |
 
 ## Key Design Decisions
 
-| Decision | Rationale | Academic Source |
-|----------|-----------|---------------|
-| 4 graph nodes (not 15) | RL-trained orchestrators converge to compact cycles | NeurIPS 2025 |
-| File-based communication | Works with any IDE agent, zero dependencies | ALMAS (arXiv 2025) |
-| Builder ≠ Reviewer | Cross-model adversarial review improves quality | Metaswarm pattern |
-| Retry with feedback injection | Automatic iterative refinement loop | AgentMesh (arXiv 2025) |
-| Goal dashboard (not state machine) | Users care about goals, not internal states | OrchVis (arXiv 2025) |
-| Jinja2 Chat Chain prompts | Structured role-pair dialogues with Reflection | ChatDev (ACL 2024) |
-| SQLite checkpointer | Persistent state, resume from any point | LangGraph best practice |
+| Decision | Rationale |
+|----------|-----------|
+| **Role-based, not IDE-based** | Works with any IDE, no code changes needed |
+| **TASK.md universal entry** | Any IDE reads one file to understand state |
+| **4 graph nodes** | RL-trained orchestrators converge to compact cycles |
+| **Builder ≠ Reviewer** | Cross-model adversarial review improves quality |
+| **File-based communication** | Zero dependencies, works everywhere |
+| **User picks IDEs** | System manages roles, user manages tools |
+| **SQLite checkpointer** | Persistent state, resume from any point |
 
-## Skill Contracts
+## Workspace Structure
 
-Each skill defines a contract in YAML:
-
-```yaml
-id: code-implement
-version: 1.0.0
-description: Apply scoped code changes with strict locking and check execution.
-quality_gates: [lint, unit_test, artifact_checksum]
-timeouts:
-  run_sec: 1800
-  verify_sec: 600
-retry:
-  max_attempts: 2
-  backoff: linear
-compatibility:
-  supported_agents: [codex, windsurf, antigravity]
+```
+.multi-agent/
+├── TASK.md             ← Universal entry point (any IDE reads this)
+├── inbox/
+│   ├── builder.md      ← Builder prompt (role-based, not IDE-based)
+│   └── reviewer.md     ← Reviewer prompt
+├── outbox/
+│   ├── builder.json    ← Builder output
+│   └── reviewer.json   ← Reviewer output
+├── dashboard.md        ← Progress panel
+├── tasks/              ← Task state markers
+├── history/            ← Conversation archive
+└── store.db            ← LangGraph checkpoint storage
 ```
 
 ## Running Tests
@@ -271,17 +281,12 @@ compatibility:
 ```bash
 pip install -e ".[dev]"
 pytest tests/ -v
+# 41 tests passed
 ```
 
 ## License
 
-This project is licensed under **CC BY-NC-SA 4.0** (Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International).
-
-- **You may**: share, adapt, remix for non-commercial purposes
-- **You may NOT**: use this for commercial purposes
-- **You must**: give attribution, share derivatives under the same license
-
-See [LICENSE](LICENSE) for details.
+**CC BY-NC-SA 4.0** — You may share and adapt for non-commercial purposes with attribution. See [LICENSE](LICENSE).
 
 ---
 
@@ -291,97 +296,60 @@ See [LICENSE](LICENSE) for details.
 
 # AgentOrchestra
 
-**面向 IDE AI 编程助手的多智能体编排框架**
+**IDE 无关的多智能体编排框架**
 
-*通过共享工作区协调 Codex、Windsurf 和 Antigravity，基于 LangGraph 状态管理*
+*协调任意 AI 编程助手组合 — Windsurf、Cursor、Codex、Kiro、Antigravity、Copilot、Aider 等 — 通过基于角色的协作*
 
 </div>
 
 ## 这是什么？
 
-AgentOrchestra 是一个开源的多智能体编排框架，用于协调多个 IDE 内置的 AI 编程助手（Codex、Windsurf、Antigravity 等）通过结构化的 **Plan → Build → Review → Decide** 管道协作完成软件开发任务。
+AgentOrchestra 是一个开源的多智能体编排框架，通过 **Plan → Build → Review → Decide** 管道协调多个 IDE 内置的 AI 编程助手协作完成任务。
 
-与传统多智能体框架假设 agent 可通过 API 调用不同，AgentOrchestra 专为**真实场景**设计——**AI agent 存在于 IDE 中**，**人类是通信桥梁**。每个 agent 周期最少只需 **2 步操作**。
+### 核心设计原则
+
+> **系统不关心你用哪个 IDE。系统只关心角色。**
+
+与硬编码特定 AI 工具的框架不同，AgentOrchestra 使用**基于角色的通信**：
+- `builder.md` — 给 builder 的 prompt（可以是 Windsurf、Cursor、Kiro，任何 IDE）
+- `reviewer.md` — 给 reviewer 的 prompt（必须是不同的 IDE）
+- `TASK.md` — 统一入口文件，任何 IDE 打开就知道当前状态和下一步
+
+你决定哪个 IDE 扮演哪个角色，系统处理其他一切。
 
 ### 解决的问题
 
-现代 AI 编程助手（Windsurf Cascade、GitHub Codex、Cursor 等）单独使用时很强大，但协调它们完成同一个任务需要：
 - 在 IDE 之间手动复制粘贴 prompt
-- 追踪下一步该由哪个 agent 执行
+- 追踪轮到谁了
 - 记住将审查反馈传递给 builder
-- 管理重试预算和超时
+- 管理重试预算
 - 会话间无持久化状态
 
 ### 解决方案
 
-AgentOrchestra 提供：
-- **共享工作区** (`.multi-agent/inbox/` 和 `outbox/`) — agent 通过文件通信
-- **4 节点 LangGraph 图** — 紧凑的 `plan → build → review → decide` 循环，支持自动重试
-- **跨模型对抗审查** — builder 和 reviewer 始终是不同的 agent
-- **目标面板** — 在 `dashboard.md` 中实时追踪进度
-- **持久化检查点** — 通过 SQLite 支持的 LangGraph checkpointer 从任意点恢复
-- **2 步 CLI** — `ma go "需求描述"` → `ma done`
+- **基于角色的工作区** — `inbox/builder.md` 和 `inbox/reviewer.md`（不绑定任何特定 IDE）
+- **TASK.md** — 在任何 IDE 中打开，立刻知道该做什么
+- **`--builder` / `--reviewer` 参数** — 你选择哪个 IDE 做什么
+- **4 节点 LangGraph 图** — 紧凑的循环，支持自动重试
+- **跨模型对抗审查** — builder 和 reviewer 必须是不同的 IDE
+- **持久化检查点** — 从任意点恢复
+- **2 步 CLI** — `ma go "需求"` → `ma done`
 
-## 研究基础
+### 支持的 IDE
 
-本架构基于 **7 篇同行评审论文** 和 **3 个业界标杆**：
+任何带 AI 助手的 IDE 都可以。已测试：
 
-| 论文 | 发表 | 应用的核心洞察 |
-|------|------|--------------|
-| Evolving Orchestration | **NeurIPS 2025** | 紧凑循环图优于复杂图 |
-| ChatDev | **ACL 2024** | Chat Chain 角色对话链 |
-| HULA | **ICSE 2025** | 人在回路，最小化摩擦 |
-| Agentless | **FSE 2025** | 简单 3 阶段管道击败复杂 agent |
-| OrchVis | arXiv 2025 | 目标驱动可视化 + 自适应自治 |
-| ALMAS | arXiv 2025 | 敏捷角色对齐 |
-| MapCoder | **ACL 2024** | 4-agent recall→plan→code→debug 管道 |
-
-> **核心发现**：RL 训练的编排器自动收敛到紧凑循环结构。我们的 4 节点图不是简化——而是实证最优结构。
-
-## 架构
-
-```
-                    ┌─────────┐
-                    │  START   │
-                    └────┬────┘
-                         │
-                    ┌────▼────┐
-               ┌───▶│  plan   │  加载合约，选择 agent，写入 inbox prompt
-               │    └────┬────┘
-               │         │
-               │    ┌────▼────┐
-               │    │  build  │  interrupt() — 等待 builder agent
-               │    └────┬────┘
-               │         │
-               │    ┌────▼────┐
-               │    │ review  │  interrupt() — 等待 reviewer agent
-               │    └────┬────┘
-               │         │
-               │    ┌────▼────┐
-               │    │ decide  │  approve → 结束, reject → 重试
-               │    └────┬────┘
-               │         │
-               │    ┌────▼────┐
-               └────│  retry  │  (注入 reviewer 反馈)
-                    └─────────┘
-```
-
-### 通信流程
-
-```
-编排器 (Orchestrator)                  IDE Agent (如 Windsurf)
-    │                                     │
-    │── 写 inbox/windsurf.md ────────────▶│  (用户在 IDE 中打开)
-    │                                     │  (agent 工作...)
-    │◀── ma done (提交输出) ──────────────│
-    │                                     │
-    │── 写 inbox/codex.md ──────────────▶│  (reviewer，不同 agent)
-    │                                     │
-    │◀── ma done (提交审查) ──────────────│
-    │                                     │
-    │   [approve] → 完成                  │
-    │   [reject]  → 带反馈重试            │
-```
+| IDE | Builder | Reviewer |
+|-----|---------|----------|
+| **Windsurf** (Cascade) | ✅ | ✅ |
+| **Cursor** | ✅ | ✅ |
+| **GitHub Codex** | ✅ | ✅ |
+| **Kiro** | ✅ | ✅ |
+| **Antigravity** | ✅ | ✅ |
+| **Copilot** | ✅ | ✅ |
+| **Aider** | ✅ | ✅ |
+| **Cline** | ✅ | ✅ |
+| *任何其他 IDE* | ✅ | ✅ |
 
 ## 快速开始
 
@@ -394,93 +362,119 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
+### 配置你的 IDE
+
+编辑 `agents/agents.yaml`：
+
+```yaml
+agents:
+  - id: windsurf
+    capabilities: [planning, implementation, testing, docs]
+  - id: cursor
+    capabilities: [planning, implementation, testing, review, docs]
+  # 在这里添加任何 IDE
+
+defaults:
+  builder: windsurf    # 默认哪个 IDE 做 builder
+  reviewer: cursor     # 默认哪个 IDE 做 reviewer
+```
+
 ### 使用
 
-**第 1 步：启动任务**
+**第 1 步：启动任务 — 指定用哪些 IDE**
 
 ```bash
-ma go "实现 POST /users endpoint" --skill code-implement
+# 使用 agents.yaml 中的默认值
+ma go "实现 POST /users endpoint"
+
+# 或明确指定 IDE
+ma go "实现 POST /users endpoint" --builder windsurf --reviewer cursor
+
+# 任意组合
+ma go "修复登录 bug" --builder kiro --reviewer codex
 ```
 
-这会自动完成：
-1. 加载 `code-implement` skill 合约
-2. 选择最佳 builder agent（如 `windsurf`）
-3. 在 `.multi-agent/inbox/windsurf.md` 生成结构化 prompt
-4. 在 `.multi-agent/dashboard.md` 创建目标面板
-5. 暂停图，等待 builder 输出
+**第 2 步：在 builder IDE 中打开 TASK.md**
 
-**第 2 步：让 agent 工作**
+`.multi-agent/TASK.md` 告诉你该做什么：
 
-在 IDE 中打开 `.multi-agent/inbox/windsurf.md`（或通过 `@file` 引用）。Agent 会看到：
-- 任务描述和完成标准
-- 需要运行的质量检查
-- 预期的 JSON 输出格式
-- 自检指令（Reflection 模式）
+```
+## 当前状态
+| 当前步骤 | BUILDER |
+| Builder  | windsurf |
+| Reviewer | cursor |
 
-**第 3 步：提交结果**
+## 下一步
+如果你是 windsurf（或充当 builder 的 IDE）：
+1. 读取 prompt: .multi-agent/inbox/builder.md
+2. 完成实现工作
+3. 保存输出到: .multi-agent/outbox/builder.json
+4. 运行: ma done
+```
+
+**第 3 步：提交并推进**
 
 ```bash
-ma done
+ma done    # 自动从 outbox/builder.json 读取
 ```
 
-自动读取 `.multi-agent/outbox/windsurf.json`（或从 stdin），推进图到 `review` 节点，并自动：
-- 选择一个**不同的** agent 作为 reviewer（跨模型对抗审查）
-- 生成包含 builder 输出的 reviewer prompt
-- 再次暂停，等待审查
+系统推进到审查阶段。TASK.md 自动更新，显示轮到 reviewer 了。
 
-**第 4 步：提交审查**
+**第 4 步：在 reviewer IDE 中打开 TASK.md**
 
 ```bash
-ma done
+ma done    # 自动从 outbox/reviewer.json 读取
 ```
 
-如果 approve → 任务完成。如果 reject → 自动将 reviewer 反馈注入下一轮 builder prompt 并重试。
+approve → 任务完成。reject → 带反馈自动重试。
 
 ### 完整示例
 
 ```bash
-$ ma go "实现用户注册的输入校验" --skill code-implement
+$ ma go "添加输入校验" --builder windsurf --reviewer cursor
 🚀 Starting task: task-a1b2c3d4
-   Skill: code-implement
 ⏸️  Graph paused at: build
-   Agent: windsurf
-   Inbox: .multi-agent/inbox/windsurf.md
+   Role: builder
+   IDE:  windsurf
+   Inbox: .multi-agent/inbox/builder.md
 
-# ... agent 工作，输出到 outbox ...
+# ... windsurf 工作，保存到 outbox/builder.json ...
 
 $ ma done
-📤 Submitting output for task task-a1b2c3d4 (agent: windsurf)
+📤 Submitting builder output (IDE: windsurf)
 ⏸️  Graph paused at: review
-   Agent: codex                    # 自动选择不同 agent 审查
-   Inbox: .multi-agent/inbox/codex.md
+   Role: reviewer
+   IDE:  cursor
+   Inbox: .multi-agent/inbox/reviewer.md
 
-# ... reviewer 审查 ...
+# ... cursor 审查，保存到 outbox/reviewer.json ...
 
 $ ma done
-📤 Submitting output for task task-a1b2c3d4 (agent: codex)
-🏁 Task finished. Status: approved
+📤 Submitting reviewer output (IDE: cursor)
+�� Task finished. Status: approved
 ```
 
 ### CLI 命令
 
 | 命令 | 说明 |
 |------|------|
-| `ma go "需求"` | 从自然语言启动新任务 |
-| `ma done` | 提交 agent 输出并推进图 |
-| `ma status` | 查看当前任务状态 |
-| `ma cancel` | 取消当前任务 |
+| `ma go "需求"` | 启动新任务 |
+| `ma go "需求" --builder X --reviewer Y` | 指定 IDE |
+| `ma done` | 提交输出并推进 |
+| `ma status` | 查看当前状态 |
+| `ma cancel` | 取消任务 |
 
 ## 关键设计决策
 
-| 决策 | 原因 | 学术来源 |
-|------|------|---------|
-| 4 个图节点（不是 15 个） | RL 训练的编排器收敛到紧凑循环 | NeurIPS 2025 |
-| 文件通信 | 适用于任何 IDE agent，零依赖 | ALMAS (arXiv 2025) |
-| Builder ≠ Reviewer | 跨模型对抗审查提高质量 | Metaswarm 模式 |
-| 带反馈的自动重试 | 迭代精炼循环 | AgentMesh (arXiv 2025) |
-| 目标面板（不是状态机） | 用户关心目标进度，不是内部状态 | OrchVis (arXiv 2025) |
-| Jinja2 Chat Chain prompt | 结构化角色对话 + Reflection | ChatDev (ACL 2024) |
-| SQLite checkpointer | 持久化状态，任意点恢复 | LangGraph 最佳实践 |
+| 决策 | 原因 |
+|------|------|
+| **基于角色，不基于 IDE** | 适用于任何 IDE，无需改代码 |
+| **TASK.md 统一入口** | 任何 IDE 读一个文件就懂状态 |
+| **4 个图节点** | RL 编排器收敛到紧凑循环 |
+| **Builder ≠ Reviewer** | 跨模型对抗审查提高质量 |
+| **文件通信** | 零依赖，到处能用 |
+| **用户选 IDE** | 系统管角色，用户管工具 |
+| **SQLite checkpointer** | 持久化状态，任意恢复 |
 
 ## 运行测试
 
@@ -492,13 +486,7 @@ pytest tests/ -v
 
 ## 许可证
 
-本项目采用 **CC BY-NC-SA 4.0**（知识共享 署名-非商业性使用-相同方式共享 4.0 国际）许可证。
-
-- **你可以**：在非商业用途下分享、改编、混合
-- **你不可以**：将本项目用于商业目的
-- **你必须**：注明出处，以相同许可证分享衍生作品
-
-详见 [LICENSE](LICENSE)。
+**CC BY-NC-SA 4.0** — 非商业用途可分享和改编，需署名。详见 [LICENSE](LICENSE)。
 
 ---
 
