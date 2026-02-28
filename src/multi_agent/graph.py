@@ -83,7 +83,7 @@ def _write_task_md(state: dict, builder_id: str, reviewer_id: str, current_role:
         "",
         "---",
         "",
-        "> **完成后，把上面要求的 JSON 结果保存到这个文件，终端会自动推进流程:**",
+        "> **完成后，把上面要求的 JSON 结果保存到以下路径，终端会自动推进流程:**",
         f"> `{outbox_path}`",
         "",
     ]

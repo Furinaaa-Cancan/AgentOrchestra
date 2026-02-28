@@ -306,6 +306,12 @@ def watch(task_id: str | None, interval: float):
             sys.exit(1)
 
     config = _make_config(task_id)
+    snapshot = app.get_state(config)
+    if not snapshot or not snapshot.next:
+        vals = snapshot.values if snapshot else {}
+        final = vals.get("final_status", "done")
+        click.echo(f"✅ Task {task_id} already finished — {final}")
+        return
     _show_waiting(app, config)
     _run_watch_loop(app, config, task_id, interval=interval)
 
