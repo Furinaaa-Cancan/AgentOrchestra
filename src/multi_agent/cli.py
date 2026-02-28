@@ -211,7 +211,7 @@ def done(task_id: str | None, file_path: str | None):
         if final:
             save_task_yaml(task_id, {"task_id": task_id, "status": final})
 
-    _show_snapshot(app, config)
+    _show_waiting(app, config)
 
 
 @main.command()
