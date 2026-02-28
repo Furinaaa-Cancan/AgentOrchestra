@@ -165,12 +165,15 @@ def _run_decomposed(app, parent_task_id, requirement, skill, builder, reviewer,
     """Decompose → sequential sub-task build-review cycles → aggregate."""
     from multi_agent.decompose import write_decompose_prompt, read_decompose_result, topo_sort
     from multi_agent.meta_graph import build_sub_task_state, aggregate_results
-    from multi_agent.watcher import OutboxPoller
     from langgraph.errors import GraphInterrupt
 
     click.echo(f"🧩 Task Decomposition: {parent_task_id}")
     click.echo(f"   {requirement}")
     click.echo()
+
+    save_task_yaml(parent_task_id, {
+        "task_id": parent_task_id, "status": "active", "mode": "decompose",
+    })
 
     # Phase 1: Write decompose prompt → wait for agent to decompose
     write_decompose_prompt(requirement)
@@ -189,18 +192,24 @@ def _run_decomposed(app, parent_task_id, requirement, skill, builder, reviewer,
 
     click.echo(f"👁️  等待任务分解结果… (Ctrl-C 停止)")
 
-    # Poll for decompose.json
-    poller = OutboxPoller(poll_interval=2.0)
+    # Poll for decompose.json (with timeout)
     decompose_result = None
+    deadline = time.time() + timeout
     try:
         while decompose_result is None:
             decompose_result = read_decompose_result()
             if decompose_result:
                 break
+            if time.time() > deadline:
+                click.echo(f"❌ 任务分解超时 ({timeout}s)。", err=True)
+                release_lock()
+                clear_runtime()
+                sys.exit(1)
             time.sleep(2)
     except KeyboardInterrupt:
         click.echo(f"\n⏹️  Decomposition stopped.")
         release_lock()
+        clear_runtime()
         return
 
     # Phase 2: Sort sub-tasks by dependencies
@@ -209,7 +218,14 @@ def _run_decomposed(app, parent_task_id, requirement, skill, builder, reviewer,
     except ValueError as e:
         click.echo(f"❌ 分解结果无效: {e}", err=True)
         release_lock()
+        clear_runtime()
         sys.exit(1)
+
+    if not sorted_tasks:
+        click.echo(f"⚠️  分解结果为空，降级为单任务模式")
+        _run_single_task(app, parent_task_id, requirement, skill, builder, reviewer,
+                         retry_budget, timeout, no_watch)
+        return
 
     click.echo(f"\n✅ 分解完成: {len(sorted_tasks)} 个子任务")
     if decompose_result.reasoning:
@@ -221,8 +237,21 @@ def _run_decomposed(app, parent_task_id, requirement, skill, builder, reviewer,
 
     # Phase 3: Execute each sub-task sequentially
     prior_results: list[dict] = []
+    failed_ids: set[str] = set()  # track failed sub-task IDs for dep skipping
 
     for i, st in enumerate(sorted_tasks, 1):
+        # Skip sub-tasks whose dependencies failed
+        skipped_deps = [d for d in st.deps if d in failed_ids]
+        if skipped_deps:
+            click.echo(f"\n⏭️  跳过 {st.id}: 依赖 {', '.join(skipped_deps)} 已失败")
+            prior_results.append({
+                "sub_id": st.id, "status": "skipped",
+                "summary": f"Skipped: dependency {', '.join(skipped_deps)} failed",
+                "changed_files": [], "retry_count": 0,
+            })
+            failed_ids.add(st.id)
+            continue
+
         click.echo(f"\n{'='*60}")
         click.echo(f"  📦 Sub-task {i}/{len(sorted_tasks)}: {st.id}")
         click.echo(f"  {st.description}")
@@ -254,6 +283,7 @@ def _run_decomposed(app, parent_task_id, requirement, skill, builder, reviewer,
                 "sub_id": st.id, "status": "failed",
                 "summary": str(e), "changed_files": [], "retry_count": 0,
             })
+            failed_ids.add(st.id)
             continue
 
         # Show waiting + watch loop for this sub-task
@@ -261,7 +291,6 @@ def _run_decomposed(app, parent_task_id, requirement, skill, builder, reviewer,
 
         if no_watch:
             click.echo(f"📌 Sub-task {st.id}: 等待手动 ma done")
-            # Can't proceed to next sub-task without completing this one
             click.echo(f"⚠️  --no-watch 模式下 --decompose 只执行第一步分解。")
             click.echo(f"   后续请逐个手动执行各子任务。")
             save_task_yaml(parent_task_id, {
@@ -270,7 +299,8 @@ def _run_decomposed(app, parent_task_id, requirement, skill, builder, reviewer,
             })
             return
 
-        _run_watch_loop(app, sub_config, sub_task_id)
+        # manage_lock=False: don't release parent lock between sub-tasks
+        _run_watch_loop(app, sub_config, sub_task_id, manage_lock=False)
 
         # Collect result
         snapshot = app.get_state(sub_config)
@@ -279,13 +309,16 @@ def _run_decomposed(app, parent_task_id, requirement, skill, builder, reviewer,
         if not isinstance(builder_out, dict):
             builder_out = {}
 
+        sub_status = vals.get("final_status", "unknown")
         prior_results.append({
             "sub_id": st.id,
-            "status": vals.get("final_status", "unknown"),
+            "status": sub_status,
             "summary": builder_out.get("summary", ""),
             "changed_files": builder_out.get("changed_files", []),
             "retry_count": vals.get("retry_count", 0),
         })
+        if sub_status not in ("approved", "completed"):
+            failed_ids.add(st.id)
 
     # Phase 4: Aggregate
     click.echo(f"\n{'='*60}")
@@ -563,7 +596,7 @@ def _show_waiting(app, config):
     click.echo()
 
 
-def _run_watch_loop(app, config, task_id: str, interval: float = 2.0):
+def _run_watch_loop(app, config, task_id: str, interval: float = 2.0, manage_lock: bool = True):
     """Shared watch loop — polls outbox/ and auto-submits output."""
     from multi_agent.watcher import OutboxPoller
     from langgraph.types import Command
@@ -586,8 +619,9 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0):
                 final = vals.get("final_status", "")
                 if final:
                     save_task_yaml(task_id, {"task_id": task_id, "status": final})
-                release_lock()
-                clear_runtime()
+                if manage_lock:
+                    release_lock()
+                    clear_runtime()
                 if final in ("approved", ""):
                     summary = vals.get("builder_output", {}).get("summary", "") if isinstance(vals.get("builder_output"), dict) else ""
                     retries = vals.get("retry_count", 0)
@@ -618,8 +652,9 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0):
                     except GraphInterrupt:
                         pass
                     except Exception as e:
-                        release_lock()
-                        clear_runtime()
+                        if manage_lock:
+                            release_lock()
+                            clear_runtime()
                         click.echo(f"[{mins:02d}:{secs:02d}] ❌ Error: {e}", err=True)
                         save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
                         return

@@ -96,6 +96,20 @@ class TestLock:
         assert workspace.read_lock() == "task-2"
 
 
+class TestClearRuntimeDecompose:
+    def test_clears_decompose_files(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("multi_agent.workspace.workspace_dir", lambda: tmp_path)
+        monkeypatch.setattr("multi_agent.workspace.inbox_dir", lambda: tmp_path / "inbox")
+        monkeypatch.setattr("multi_agent.workspace.outbox_dir", lambda: tmp_path / "outbox")
+        (tmp_path / "inbox").mkdir()
+        (tmp_path / "outbox").mkdir()
+        (tmp_path / "inbox" / "decompose.md").write_text("prompt")
+        (tmp_path / "outbox" / "decompose.json").write_text('{"sub_tasks": []}')
+        workspace.clear_runtime()
+        assert not (tmp_path / "inbox" / "decompose.md").exists()
+        assert not (tmp_path / "outbox" / "decompose.json").exists()
+
+
 class TestClearRuntime:
     def test_clears_all_shared_files(self, tmp_workspace):
         workspace.ensure_workspace()

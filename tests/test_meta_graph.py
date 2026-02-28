@@ -94,6 +94,18 @@ class TestAggregateResults:
         assert agg["total_sub_tasks"] == 0
         assert agg["final_status"] == "approved"
 
+    def test_skipped_counts_as_failed(self):
+        results = [
+            {"sub_id": "a", "status": "approved", "summary": "Done",
+             "changed_files": [], "retry_count": 0},
+            {"sub_id": "b", "status": "skipped", "summary": "Dep failed",
+             "changed_files": [], "retry_count": 0},
+        ]
+        agg = aggregate_results("parent-123", results)
+        assert agg["final_status"] == "failed"
+        assert agg["failed"] == ["b"]
+        assert agg["completed"] == 1
+
     def test_dedup_changed_files(self):
         results = [
             {"sub_id": "a", "status": "approved", "summary": "",

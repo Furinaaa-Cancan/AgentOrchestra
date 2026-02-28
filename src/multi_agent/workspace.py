@@ -114,7 +114,7 @@ def clear_runtime() -> None:
     Called at task start to ensure clean state, and at task end to prevent
     stale files from leaking into the next task.
     """
-    for role in ("builder", "reviewer"):
+    for role in ("builder", "reviewer", "decompose"):
         clear_inbox(role)
         clear_outbox(role)
     for name in ("TASK.md", "dashboard.md"):
