@@ -290,8 +290,12 @@ def cancel(task_id: str | None, reason: str):
     if not task_id:
         task_id = _detect_active_task(app)
         if not task_id:
-            click.echo("No active task to cancel.")
-            return
+            # Fallback: check for orphaned lock (e.g. after kill -9)
+            task_id = read_lock()
+            if not task_id:
+                click.echo("No active task to cancel.")
+                return
+            click.echo(f"⚠️  发现孤立锁 (task: {task_id}), 正在清理…")
 
     # Mark task YAML as cancelled so auto-detect skips it
     save_task_yaml(task_id, {"task_id": task_id, "status": "cancelled", "reason": reason})
