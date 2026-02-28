@@ -315,8 +315,12 @@ def _show_waiting(app, config):
     snapshot = app.get_state(config)
     if not snapshot or not snapshot.next:
         vals = snapshot.values if snapshot else {}
-        status = vals.get("final_status", vals.get("error", "unknown"))
-        click.echo(f"🏁 Task finished. Status: {status}")
+        final = vals.get("final_status", "")
+        error = vals.get("error", "")
+        if final in ("approved", ""):
+            click.echo(f"✅ Task finished. Status: {final or 'done'}")
+        else:
+            click.echo(f"❌ Task finished. Status: {final}{' — ' + error if error else ''}")
         return
 
     role = "builder"
@@ -354,7 +358,11 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0):
                 final = vals.get("final_status", "")
                 if final:
                     save_task_yaml(task_id, {"task_id": task_id, "status": final})
-                click.echo(f"[{mins:02d}:{secs:02d}] ✅ Task finished — {final or 'done'}")
+                if final in ("approved", ""):
+                    click.echo(f"[{mins:02d}:{secs:02d}] ✅ Task finished — {final or 'done'}")
+                else:
+                    error = vals.get("error", "")
+                    click.echo(f"[{mins:02d}:{secs:02d}] ❌ Task finished — {final}{' — ' + error if error else ''}")
                 return
 
             # Determine which role we're waiting for
