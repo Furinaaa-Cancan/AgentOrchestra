@@ -80,6 +80,49 @@ def save_task_yaml(task_id: str, data: dict) -> Path:
     return path
 
 
+# ── Task Lock ─────────────────────────────────────────────
+
+def _lock_path() -> Path:
+    return workspace_dir() / ".lock"
+
+
+def read_lock() -> str | None:
+    """Read the active task_id from lock file. Returns None if no lock."""
+    p = _lock_path()
+    if not p.exists():
+        return None
+    text = p.read_text(encoding="utf-8").strip()
+    return text or None
+
+
+def acquire_lock(task_id: str) -> None:
+    """Write lock file with the given task_id."""
+    ensure_workspace()
+    _lock_path().write_text(task_id, encoding="utf-8")
+
+
+def release_lock() -> None:
+    """Remove lock file."""
+    p = _lock_path()
+    if p.exists():
+        p.unlink()
+
+
+def clear_runtime() -> None:
+    """Remove all shared runtime files (inbox, outbox, TASK.md, dashboard).
+
+    Called at task start to ensure clean state, and at task end to prevent
+    stale files from leaking into the next task.
+    """
+    for role in ("builder", "reviewer"):
+        clear_inbox(role)
+        clear_outbox(role)
+    for name in ("TASK.md", "dashboard.md"):
+        p = workspace_dir() / name
+        if p.exists():
+            p.unlink()
+
+
 def archive_conversation(task_id: str, conversation: list[dict]) -> Path:
     """Archive conversation history to history/{task_id}.json."""
     ensure_workspace()

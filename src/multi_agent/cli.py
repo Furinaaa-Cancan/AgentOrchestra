@@ -10,10 +10,12 @@ import time
 import click
 
 from multi_agent.workspace import (
-    clear_inbox,
-    clear_outbox,
+    acquire_lock,
+    clear_runtime,
     ensure_workspace,
+    read_lock,
     read_outbox,
+    release_lock,
     save_task_yaml,
 )
 
@@ -67,21 +69,24 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
 
     ensure_workspace()
 
-    # Check for existing active task
+    # Enforce single active task — prevent data conflicts
     app = compile_graph()
-    existing = _detect_active_task(app)
-    if existing:
-        click.echo(f"⚠️  Task '{existing}' is still active.", err=True)
-        click.echo(f"   Run `ma done` to finish it, or `ma cancel` to abort.", err=True)
-        if not click.confirm("Start a new task anyway? (will NOT cancel the old one)"):
-            sys.exit(1)
+    locked = read_lock()
+    if locked:
+        click.echo(f"❌ 任务 '{locked}' 正在进行中。", err=True)
+        click.echo(f"   先完成或取消当前任务:", err=True)
+        click.echo(f"   • ma cancel   — 取消当前任务", err=True)
+        click.echo(f"   • ma done     — 手动提交结果", err=True)
+        click.echo(f"   • ma status   — 查看任务状态", err=True)
+        sys.exit(1)
 
     task_id = task_id or _generate_task_id(requirement)
 
-    # Clear stale inbox/outbox from previous tasks
-    for role in ("builder", "reviewer"):
-        clear_inbox(role)
-        clear_outbox(role)
+    # Clear ALL shared runtime files to prevent stale data leaking
+    clear_runtime()
+
+    # Acquire lock — marks this task as the sole active task
+    acquire_lock(task_id)
 
     initial_state = {
         "task_id": task_id,
@@ -110,17 +115,20 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
     except GraphInterrupt:
         pass
     except FileNotFoundError as e:
+        release_lock()
         click.echo(f"❌ {e}", err=True)
         click.echo(f"   确认你在 AgentOrchestra 项目根目录运行, 且 skills/ 和 agents/ 存在。", err=True)
         click.echo(f"   或设置 MA_ROOT 环境变量指向项目根目录。", err=True)
         save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
         sys.exit(1)
     except ValueError as e:
+        release_lock()
         click.echo(f"❌ {e}", err=True)
         click.echo(f"   检查 agents/agents.yaml 配置是否正确。", err=True)
         save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
         sys.exit(1)
     except Exception as e:
+        release_lock()
         click.echo(f"❌ Task failed to start: {e}", err=True)
         save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
         sys.exit(1)
@@ -209,6 +217,8 @@ def done(task_id: str | None, file_path: str | None):
     except GraphInterrupt:
         pass  # Normal — graph paused at next interrupt()
     except Exception as e:
+        release_lock()
+        clear_runtime()
         click.echo(f"❌ Graph error during resume: {e}", err=True)
         save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
         sys.exit(1)
@@ -220,6 +230,8 @@ def done(task_id: str | None, file_path: str | None):
         final = vals.get("final_status", "")
         if final:
             save_task_yaml(task_id, {"task_id": task_id, "status": final})
+        release_lock()
+        clear_runtime()
 
     _show_waiting(app, config)
 
@@ -284,17 +296,11 @@ def cancel(task_id: str | None, reason: str):
     # Mark task YAML as cancelled so auto-detect skips it
     save_task_yaml(task_id, {"task_id": task_id, "status": "cancelled", "reason": reason})
 
-    # Update the dashboard
-    from multi_agent.dashboard import write_dashboard
-    write_dashboard(
-        task_id=task_id,
-        done_criteria=[],
-        current_agent="",
-        current_role="cancelled",
-        conversation=[],
-        error=f"已取消: {reason}",
-    )
-    click.echo(f"🛑 Task {task_id} marked as cancelled: {reason}")
+    # Release lock + clean shared files
+    release_lock()
+    clear_runtime()
+
+    click.echo(f"🛑 Task {task_id} cancelled: {reason}")
 
 
 @main.command()
@@ -316,11 +322,22 @@ def watch(task_id: str | None, interval: float):
             click.echo("❌ No active task to watch.", err=True)
             sys.exit(1)
 
+    # Validate lock consistency — prevent watching wrong task
+    locked = read_lock()
+    if locked and locked != task_id:
+        click.echo(f"❌ 锁文件指向 '{locked}', 但你要 watch '{task_id}'。", err=True)
+        click.echo(f"   同时只能有一个活跃任务。", err=True)
+        sys.exit(1)
+    if not locked:
+        acquire_lock(task_id)
+
     config = _make_config(task_id)
     snapshot = app.get_state(config)
     if not snapshot or not snapshot.next:
         vals = snapshot.values if snapshot else {}
         final = vals.get("final_status", "done")
+        release_lock()
+        clear_runtime()
         click.echo(f"✅ Task {task_id} already finished — {final}")
         return
     _show_waiting(app, config)
@@ -376,6 +393,8 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0):
                 final = vals.get("final_status", "")
                 if final:
                     save_task_yaml(task_id, {"task_id": task_id, "status": final})
+                release_lock()
+                clear_runtime()
                 if final in ("approved", ""):
                     summary = vals.get("builder_output", {}).get("summary", "") if isinstance(vals.get("builder_output"), dict) else ""
                     retries = vals.get("retry_count", 0)
@@ -406,6 +425,8 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0):
                     except GraphInterrupt:
                         pass
                     except Exception as e:
+                        release_lock()
+                        clear_runtime()
                         click.echo(f"[{mins:02d}:{secs:02d}] ❌ Error: {e}", err=True)
                         save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
                         return

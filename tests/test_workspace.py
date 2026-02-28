@@ -69,6 +69,57 @@ class TestInboxOutbox:
         assert not path.exists()
 
 
+class TestLock:
+    def test_read_lock_empty(self, tmp_workspace):
+        workspace.ensure_workspace()
+        assert workspace.read_lock() is None
+
+    def test_acquire_and_read(self, tmp_workspace):
+        workspace.ensure_workspace()
+        workspace.acquire_lock("task-abc")
+        assert workspace.read_lock() == "task-abc"
+
+    def test_release_lock(self, tmp_workspace):
+        workspace.ensure_workspace()
+        workspace.acquire_lock("task-abc")
+        workspace.release_lock()
+        assert workspace.read_lock() is None
+
+    def test_release_nonexistent(self, tmp_workspace):
+        workspace.ensure_workspace()
+        workspace.release_lock()  # should not raise
+
+    def test_overwrite_lock(self, tmp_workspace):
+        workspace.ensure_workspace()
+        workspace.acquire_lock("task-1")
+        workspace.acquire_lock("task-2")
+        assert workspace.read_lock() == "task-2"
+
+
+class TestClearRuntime:
+    def test_clears_all_shared_files(self, tmp_workspace):
+        workspace.ensure_workspace()
+        workspace.write_inbox("builder", "prompt")
+        workspace.write_inbox("reviewer", "prompt")
+        workspace.write_outbox("builder", {"status": "done"})
+        workspace.write_outbox("reviewer", {"decision": "approve"})
+        (tmp_workspace / "TASK.md").write_text("task content")
+        (tmp_workspace / "dashboard.md").write_text("dashboard")
+
+        workspace.clear_runtime()
+
+        assert not (tmp_workspace / "inbox" / "builder.md").exists()
+        assert not (tmp_workspace / "inbox" / "reviewer.md").exists()
+        assert not (tmp_workspace / "outbox" / "builder.json").exists()
+        assert not (tmp_workspace / "outbox" / "reviewer.json").exists()
+        assert not (tmp_workspace / "TASK.md").exists()
+        assert not (tmp_workspace / "dashboard.md").exists()
+
+    def test_safe_when_empty(self, tmp_workspace):
+        workspace.ensure_workspace()
+        workspace.clear_runtime()  # should not raise
+
+
 class TestArchive:
     def test_archive_conversation(self, tmp_workspace):
         workspace.ensure_workspace()
