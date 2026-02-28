@@ -336,7 +336,8 @@ def _show_waiting(app, config):
         role = info.get("role", "builder")
         agent = info.get("agent", "?")
 
-    click.echo(f"📋 在 {agent} IDE 里对 AI 说:")
+    step_label = "Build" if role == "builder" else "Review"
+    click.echo(f"📋 [{step_label}] 在 {agent} IDE 里对 AI 说:")
     click.echo(f'   "帮我完成 @.multi-agent/TASK.md 里的任务"')
     click.echo()
 
