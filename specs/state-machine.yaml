@@ -1,0 +1,42 @@
+version: 1
+terminal_states:
+  - DONE
+  - CANCELLED
+transitions:
+  DRAFT:
+    - QUEUED
+    - CANCELLED
+  QUEUED:
+    - ASSIGNED
+    - CANCELLED
+  ASSIGNED:
+    - RUNNING
+    - FAILED
+    - CANCELLED
+  RUNNING:
+    - VERIFYING
+    - FAILED
+    - RETRY
+    - ESCALATED
+    - CANCELLED
+  VERIFYING:
+    - APPROVED
+    - FAILED
+    - RETRY
+    - ESCALATED
+    - CANCELLED
+  APPROVED:
+    - MERGED
+    - FAILED
+  MERGED:
+    - DONE
+  FAILED:
+    - RETRY
+    - ESCALATED
+    - CANCELLED
+  RETRY:
+    - QUEUED
+    - ASSIGNED
+  ESCALATED:
+    - ASSIGNED
+    - CANCELLED

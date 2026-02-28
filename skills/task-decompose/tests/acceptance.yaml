@@ -1,0 +1,8 @@
+scenarios:
+  - id: split-feature-request
+    given: "A feature request with API + test requirements"
+    when: "Run task-decompose"
+    then:
+      - "outputs include at least 2 tasks"
+      - "each output task has done_criteria"
+      - "dependencies are explicit"

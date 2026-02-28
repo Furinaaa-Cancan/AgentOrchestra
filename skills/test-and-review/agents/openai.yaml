@@ -1,0 +1,4 @@
+interface:
+  display_name: Test And Review
+  short_description: Verify outputs and return strict decision artifacts.
+  default_prompt: Validate implementation against required checks and emit APPROVED, RETRY, or ESCALATED with evidence.

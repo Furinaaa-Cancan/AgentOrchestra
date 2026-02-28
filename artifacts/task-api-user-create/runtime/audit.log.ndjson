@@ -1,0 +1,2 @@
+{"event": "state_transition", "task_id": "task-api-user-create", "trace_id": "2a4e8d09-8a7f-49ca-8e56-cf16e8e177ab", "actor": "windsurf", "from": "ASSIGNED", "to": "RUNNING", "reason": "builder starting", "at": "2026-02-18T12:28:53Z"}
+{"event": "state_transition", "task_id": "task-api-user-create", "trace_id": "2a4e8d09-8a7f-49ca-8e56-cf16e8e177ab", "actor": "windsurf", "from": "RUNNING", "to": "VERIFYING", "reason": "builder finished", "at": "2026-02-18T12:28:57Z"}

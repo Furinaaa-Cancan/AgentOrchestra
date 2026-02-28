@@ -1,0 +1,58 @@
+# 🔧 Builder 任务
+
+## 你的身份
+- **Agent**: {{ agent_id }}
+- **角色**: Builder (实现者)
+- **任务**: {{ task.task_id }}
+- **Skill**: {{ contract.id }} v{{ contract.version }}
+
+## 要做什么
+{{ contract.description }}
+
+{% if task.input_payload %}
+### 输入规格
+{% for key, value in task.input_payload.items() %}
+- {{ key }}: {{ value }}
+{% endfor %}
+{% endif %}
+
+### 完成标准 (逐条完成)
+{% for criterion in task.done_criteria %}
+- [ ] {{ criterion }}
+{% endfor %}
+
+### 质量检查 (必须运行)
+{% for gate in contract.quality_gates %}
+- {{ gate }}
+{% endfor %}
+
+## 产出要求
+完成后，请输出以下 JSON (保存到 `.multi-agent/outbox/{{ agent_id }}.json`):
+
+```json
+{
+  "status": "completed",
+  "summary": "实现了什么",
+  "changed_files": ["/abs/path/file1"],
+  "check_results": { {% for gate in contract.quality_gates %}"{{ gate }}": "pass"{% if not loop.last %}, {% endif %}{% endfor %} },
+  "risks": [],
+  "handoff_notes": "给 reviewer 的说明"
+}
+```
+
+## 规则
+- 只做上述范围内的改动
+- 文件路径使用绝对路径
+- 编辑共享文件前加锁
+- **自检**: 提交前请自行检查代码的正确性、风格和效率
+{% if retry_count > 0 %}
+
+---
+
+## ⚠️ 重试 (第 {{ retry_count }} 次 / 共 {{ retry_budget }} 次)
+
+### 上一轮审查反馈
+{{ retry_feedback }}
+
+请针对以上反馈修改后重新提交。
+{% endif %}

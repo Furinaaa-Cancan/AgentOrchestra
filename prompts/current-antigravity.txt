@@ -1,0 +1,15 @@
+你当前处于待命状态。
+- task_id: task-api-user-create
+- your_agent_id: antigravity
+- your_role: reviewer
+- current_owner_agent: windsurf
+- current_owner_role: builder
+
+现在不要执行任何改动。
+请严格返回下面这个 JSON：
+{
+  "agent": "antigravity",
+  "task_id": "task-api-user-create",
+  "status": "standby",
+  "reason": "当前 owner 是 builder/windsurf"
+}

@@ -1,0 +1,17 @@
+runtime/*.db
+runtime/*.json
+runtime/*.ndjson
+runtime/sessions/*.json
+runtime/handoffs/
+._*
+.venv/
+__pycache__/
+*.egg-info/
+
+# Multi-agent workspace runtime
+.multi-agent/inbox/
+.multi-agent/outbox/
+.multi-agent/tasks/
+.multi-agent/history/
+.multi-agent/store.db
+.multi-agent/dashboard.md

@@ -1,0 +1,4 @@
+interface:
+  display_name: Task Decompose
+  short_description: Split requirements into strict multi-agent tasks.
+  default_prompt: Decompose the request into strict executable tasks with dependencies, checks, and handoff artifacts.

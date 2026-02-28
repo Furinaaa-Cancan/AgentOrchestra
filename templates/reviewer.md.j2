@@ -1,0 +1,46 @@
+# 🔍 Reviewer 任务
+
+## 你的身份
+- **Agent**: {{ agent_id }}
+- **角色**: Reviewer (审查者)
+- **任务**: {{ task.task_id }}
+- **Skill**: {{ contract.id }} v{{ contract.version }}
+
+## 审查目标
+审查 **{{ builder_agent }}** 的实现是否符合任务要求。
+
+### 完成标准 (逐条核对)
+{% for criterion in task.done_criteria %}
+- [ ] {{ criterion }}
+{% endfor %}
+
+### 质量检查结果 (由 builder 提交)
+{% for gate, result in builder_output.get("check_results", {}).items() %}
+- {{ gate }}: {{ result }}
+{% endfor %}
+
+## Builder 提交的报告
+
+- **状态**: {{ builder_output.get("status", "unknown") }}
+- **摘要**: {{ builder_output.get("summary", "") }}
+- **修改文件**: {{ builder_output.get("changed_files", []) | join(", ") }}
+- **风险**: {{ builder_output.get("risks", []) | join(", ") or "无" }}
+- **交接说明**: {{ builder_output.get("handoff_notes", "") }}
+
+## 产出要求
+完成审查后，请输出以下 JSON (保存到 `.multi-agent/outbox/{{ agent_id }}.json`):
+
+```json
+{
+  "decision": "approve 或 reject",
+  "summary": "审查结论",
+  "issues": ["问题1", "问题2"],
+  "feedback": "给 builder 的详细修改建议（如果 reject）"
+}
+```
+
+## 规则
+- 只审查当前任务范围内的改动
+- 逐条检查完成标准是否满足
+- 如果 reject，必须给出具体的修改建议
+- **自检**: 确认你的审查意见是准确且有建设性的

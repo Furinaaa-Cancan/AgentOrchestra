@@ -1,0 +1,41 @@
+{
+  "artifact_uri": "artifacts/task-api-user-create/",
+  "consumer": "windsurf",
+  "created_at": "2026-02-18T10:00:00Z",
+  "deps": [],
+  "done_criteria": [
+    "new endpoint exposes POST /users",
+    "unit and contract tests pass"
+  ],
+  "expected_checks": [
+    "lint",
+    "unit_test",
+    "contract_test",
+    "artifact_checksum"
+  ],
+  "idempotency_key": "task-api-user-create-v1",
+  "input_digest": "sha256:3e5e31f3f5d30c5abfce0d0a58f5475bbec41e5e64a04be5f73a79388620eaa5",
+  "input_payload": {
+    "endpoint": "POST /users",
+    "framework": "fastapi",
+    "repository": "multi-agent"
+  },
+  "metadata": {
+    "source": "manual"
+  },
+  "owner": "builder",
+  "priority": "high",
+  "producer": "planner",
+  "required_capabilities": [
+    "implementation",
+    "testing"
+  ],
+  "retry_budget": 2,
+  "skill_id": "code-implement",
+  "skill_version": "1.0.0",
+  "state": "ASSIGNED",
+  "task_id": "task-api-user-create",
+  "timeout_sec": 1800,
+  "trace_id": "2a4e8d09-8a7f-49ca-8e56-cf16e8e177ab",
+  "updated_at": "2026-02-27T02:44:56Z"
+}

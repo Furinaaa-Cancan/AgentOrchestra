@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "agents": [
+    {
+      "id": "codex",
+      "capabilities": ["planning", "implementation", "testing", "review", "docs"],
+      "reliability": 0.93,
+      "queue_health": 0.86,
+      "cost": 0.55
+    },
+    {
+      "id": "windsurf",
+      "capabilities": ["planning", "implementation", "testing", "docs"],
+      "reliability": 0.88,
+      "queue_health": 0.91,
+      "cost": 0.50
+    },
+    {
+      "id": "antigravity",
+      "capabilities": ["planning", "implementation", "review", "security"],
+      "reliability": 0.90,
+      "queue_health": 0.79,
+      "cost": 0.58
+    }
+  ]
+}

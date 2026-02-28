@@ -1,0 +1,8 @@
+{
+  "artifact_checksum": "pass",
+  "contract_test": "pass",
+  "lint": true,
+  "unit_test": {
+    "status": "passed"
+  }
+}

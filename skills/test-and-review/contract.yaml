@@ -1,0 +1,50 @@
+id: test-and-review
+version: 1.0.0
+description: Validate task outputs and produce an auditable go/no-go decision.
+triggers:
+  - "测试评审"
+  - "verify task"
+  - "review patch"
+inputs:
+  - name: task
+    schema: application/json
+    required: true
+  - name: handoff_report
+    schema: application/json
+    required: true
+outputs:
+  - name: review_decision
+    schema: application/json
+    required: true
+preconditions:
+  - task state is VERIFYING
+  - handoff_report includes check_results
+postconditions:
+  - decision includes status and rationale
+  - failing checks include evidence
+quality_gates:
+  - lint
+  - unit_test
+  - contract_test
+  - security_scan
+timeouts:
+  run_sec: 1200
+  verify_sec: 600
+retry:
+  max_attempts: 1
+  backoff: none
+fallback:
+  on_failure: escalate_to_reviewer
+compatibility:
+  min_orchestrator_version: 0.1.0
+  supported_agents:
+    - codex
+    - windsurf
+    - antigravity
+handoff:
+  artifact_path: artifacts/${task_id}/
+  required_fields:
+    - decision
+    - rationale
+    - failed_checks
+    - evidence

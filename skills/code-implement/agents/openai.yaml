@@ -1,0 +1,4 @@
+interface:
+  display_name: Code Implement
+  short_description: Implement a scoped task with strict checks and handoff output.
+  default_prompt: Implement the assigned task strictly within scope, run required checks, and produce machine-readable handoff output.

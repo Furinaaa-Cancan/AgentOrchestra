@@ -1,0 +1,14 @@
+评审完成。
+```json
+{
+  "agent": "antigravity",
+  "role": "reviewer",
+  "task_id": "task-api-user-create",
+  "decision": "pass",
+  "summary": "通过",
+  "failed_checks": [],
+  "evidence": ["证据A"],
+  "risks": ["低风险"],
+  "recommended_event": "review_pass"
+}
+```

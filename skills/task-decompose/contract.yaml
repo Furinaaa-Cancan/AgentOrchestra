@@ -1,0 +1,43 @@
+id: task-decompose
+version: 1.0.0
+description: Split requirements into strict task contracts for multi-agent scheduling.
+triggers:
+  - "拆分任务"
+  - "task decomposition"
+  - "multi-agent planning"
+inputs:
+  - name: requirement
+    schema: text/markdown
+    required: true
+outputs:
+  - name: task_list
+    schema: application/json
+    required: true
+preconditions:
+  - requirement includes scope and goal
+postconditions:
+  - each task has done_criteria and expected_checks
+  - task graph has no dependency cycle
+quality_gates:
+  - contract_test
+  - artifact_checksum
+timeouts:
+  run_sec: 900
+  verify_sec: 300
+retry:
+  max_attempts: 1
+  backoff: none
+fallback:
+  on_failure: escalate_to_reviewer
+compatibility:
+  min_orchestrator_version: 0.1.0
+  supported_agents:
+    - codex
+    - windsurf
+    - antigravity
+handoff:
+  artifact_path: artifacts/${task_id}/
+  required_fields:
+    - summary
+    - task_graph
+    - risk

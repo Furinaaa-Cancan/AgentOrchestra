@@ -1,0 +1,8 @@
+scenarios:
+  - id: apply-scoped-patch
+    given: "A task with implementation and testing capabilities required"
+    when: "Run code-implement"
+    then:
+      - "all changed files are listed"
+      - "check_results includes expected_checks"
+      - "lock is released after completion"

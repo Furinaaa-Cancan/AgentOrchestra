@@ -1,0 +1,7 @@
+scenarios:
+  - id: verify-failing-contract-test
+    given: "check_results where contract_test failed"
+    when: "Run test-and-review"
+    then:
+      - "decision is RETRY or ESCALATED"
+      - "failed_checks contains contract_test"

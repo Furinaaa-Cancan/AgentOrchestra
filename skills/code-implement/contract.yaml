@@ -1,0 +1,52 @@
+id: code-implement
+version: 1.0.0
+description: Apply scoped code changes with strict locking and check execution.
+triggers:
+  - "实现代码"
+  - "implement task"
+  - "write patch"
+inputs:
+  - name: task
+    schema: application/json
+    required: true
+  - name: repository_context
+    schema: text/markdown
+    required: true
+outputs:
+  - name: patch
+    schema: text/unified-diff
+    required: true
+  - name: handoff_report
+    schema: application/json
+    required: true
+preconditions:
+  - file lock acquired for each target file
+  - task state is RUNNING
+postconditions:
+  - required checks executed
+  - patch limited to task scope
+quality_gates:
+  - lint
+  - unit_test
+  - artifact_checksum
+timeouts:
+  run_sec: 1800
+  verify_sec: 600
+retry:
+  max_attempts: 2
+  backoff: linear
+fallback:
+  on_failure: retry
+compatibility:
+  min_orchestrator_version: 0.1.0
+  supported_agents:
+    - codex
+    - windsurf
+    - antigravity
+handoff:
+  artifact_path: artifacts/${task_id}/
+  required_fields:
+    - summary
+    - changed_files
+    - check_results
+    - risk
