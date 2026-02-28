@@ -15,3 +15,4 @@ __pycache__/
 .multi-agent/history/
 .multi-agent/store.db
 .multi-agent/dashboard.md
+.multi-agent/TASK.md

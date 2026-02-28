@@ -1,0 +1,38 @@
+# AgentOrchestra — Agent Registry
+# 
+# Map your IDE tools to roles. You can use ANY IDE here.
+# The system only cares about roles (builder, reviewer), not IDE names.
+#
+# Examples:
+#   - windsurf, cursor, kiro, codex, antigravity, copilot, aider, cline, ...
+#
+# To add a new IDE, just add it here. No code changes needed.
+
+version: 2
+
+agents:
+  - id: windsurf
+    capabilities: [planning, implementation, testing, docs]
+    
+  - id: cursor
+    capabilities: [planning, implementation, testing, review, docs]
+    
+  - id: codex
+    capabilities: [planning, implementation, testing, review, docs]
+
+  - id: antigravity
+    capabilities: [planning, implementation, review, security]
+
+  - id: kiro
+    capabilities: [planning, implementation, testing, review]
+
+# Role assignment strategy:
+#   "manual"  — user picks which IDE does what (default, best UX)
+#   "auto"    — system picks based on capabilities (legacy mode)
+role_strategy: manual
+
+# Default role mapping (used when role_strategy is "manual")
+# You can override per-task with: ma go --builder windsurf --reviewer cursor
+defaults:
+  builder: windsurf
+  reviewer: cursor

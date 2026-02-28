@@ -16,7 +16,7 @@ from multi_agent.config import store_db_path
 from multi_agent.contract import load_contract
 from multi_agent.dashboard import write_dashboard
 from multi_agent.prompt import render_builder_prompt, render_reviewer_prompt
-from multi_agent.router import load_agents, pick_agent, pick_reviewer
+from multi_agent.router import load_agents, resolve_builder, resolve_reviewer
 from multi_agent.schema import (
     BuilderOutput,
     ReviewerOutput,
@@ -42,9 +42,11 @@ class WorkflowState(TypedDict, total=False):
     input_payload: dict[str, Any]
 
     # Flow control
-    current_role: str
-    current_agent: str
-    builder_agent: str
+    current_role: str          # "builder" or "reviewer"
+    builder_id: str            # IDE name filling builder role (e.g. "windsurf")
+    reviewer_id: str           # IDE name filling reviewer role (e.g. "cursor")
+    builder_explicit: str      # user-specified builder (from --builder flag)
+    reviewer_explicit: str     # user-specified reviewer (from --reviewer flag)
     builder_output: dict | None
     reviewer_output: dict | None
     retry_count: int
@@ -59,23 +61,103 @@ class WorkflowState(TypedDict, total=False):
     final_status: str | None
 
 
+# ── TASK.md — Universal Entry Point ──────────────────────
+
+def _write_task_md(state: dict, builder_id: str, reviewer_id: str, current_role: str):
+    """Write TASK.md — a single file any IDE can read to understand the full context.
+
+    This is the key UX improvement: open any project in any IDE,
+    read TASK.md, and you immediately know what to do.
+    """
+    from multi_agent.config import workspace_dir
+    task_id = state.get("task_id", "?")
+    requirement = state.get("requirement", "?")
+    retry_count = state.get("retry_count", 0)
+    retry_budget = state.get("retry_budget", 2)
+
+    role_emoji = {"builder": "🔧", "reviewer": "🔍"}.get(current_role, "⏳")
+
+    lines = [
+        f"# {role_emoji} TASK.md — {task_id}",
+        "",
+        f"> **This file is auto-generated.** Open it in any IDE to see the current task state.",
+        "",
+        "## Current State",
+        "",
+        f"| Field | Value |",
+        f"|-------|-------|",
+        f"| **Current Step** | **{current_role.upper()}** |",
+        f"| Builder (实现) | {builder_id} |",
+        f"| Reviewer (审查) | {reviewer_id} |",
+        f"| Retry | {retry_count}/{retry_budget} |",
+        "",
+        "## What to Do Now",
+        "",
+    ]
+
+    if current_role == "builder":
+        lines += [
+            f"**If you are `{builder_id}`** (or whichever IDE is acting as builder):",
+            "",
+            f"1. Read the prompt: `.multi-agent/inbox/builder.md`",
+            f"2. Do the implementation work described in the prompt",
+            f"3. Save your output JSON to: `.multi-agent/outbox/builder.json`",
+            f"4. Run: `ma done`",
+            "",
+            f"**If you are `{reviewer_id}`**: wait — it's not your turn yet.",
+        ]
+    elif current_role == "reviewer":
+        lines += [
+            f"**If you are `{reviewer_id}`** (or whichever IDE is acting as reviewer):",
+            "",
+            f"1. Read the prompt: `.multi-agent/inbox/reviewer.md`",
+            f"2. Review the builder's output described in the prompt",
+            f"3. Save your review JSON to: `.multi-agent/outbox/reviewer.json`",
+            f"4. Run: `ma done`",
+            "",
+            f"**If you are `{builder_id}`**: wait — it's not your turn yet.",
+        ]
+
+    lines += [
+        "",
+        "## Requirement",
+        "",
+        f"> {requirement}",
+        "",
+        "## Quick Commands",
+        "",
+        "```bash",
+        "ma status    # Check current state",
+        "ma done      # Submit output and advance",
+        "ma cancel    # Cancel the task",
+        "```",
+        "",
+    ]
+
+    p = workspace_dir() / "TASK.md"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("\n".join(lines), encoding="utf-8")
+
+
 # ── Node 1: Plan ──────────────────────────────────────────
 
 def plan_node(state: WorkflowState) -> dict:
-    """Load skill contract → select agent → generate prompt → write inbox."""
+    """Load skill contract → resolve builder → generate prompt → write inbox."""
     skill_id = state["skill_id"]
     contract = load_contract(skill_id)
     agents = load_agents()
 
-    # Determine required capabilities from contract triggers or default
-    required_caps = ["implementation"]
-    for trigger in contract.triggers:
-        if "plan" in trigger.lower() or "decompose" in trigger.lower():
-            required_caps = ["planning"]
-            break
+    # Resolve which IDE fills builder role (user choice > defaults > auto)
+    builder_id = resolve_builder(
+        agents, contract,
+        explicit=state.get("builder_explicit") or None,
+    )
 
-    # Pick builder agent
-    builder = pick_agent(agents, contract, required_caps, role="builder")
+    # Also resolve reviewer early so we can show it in dashboard
+    reviewer_id = resolve_reviewer(
+        agents, contract, builder_id,
+        explicit=state.get("reviewer_explicit") or None,
+    )
 
     # Build a lightweight Task for prompt rendering
     task = Task(
@@ -97,33 +179,36 @@ def plan_node(state: WorkflowState) -> dict:
     prompt = render_builder_prompt(
         task=task,
         contract=contract,
-        agent_id=builder.id,
+        agent_id=builder_id,
         retry_count=retry_count,
         retry_feedback=retry_feedback,
         retry_budget=task.retry_budget,
     )
 
-    # Clear previous outbox and write new inbox
-    clear_outbox(builder.id)
-    write_inbox(builder.id, prompt)
+    # Write to ROLE-based inbox (builder.md, not windsurf.md)
+    clear_outbox("builder")
+    write_inbox("builder", prompt)
+
+    # Write TASK.md — single entry point for any IDE
+    _write_task_md(state, builder_id, reviewer_id, "builder")
 
     # Update dashboard
     write_dashboard(
         task_id=state["task_id"],
         done_criteria=state.get("done_criteria", []),
-        current_agent=builder.id,
+        current_agent=builder_id,
         current_role="builder",
         conversation=state.get("conversation", []),
-        status_msg=f"🔵 等待 **{builder.id}** 执行 builder 任务",
+        status_msg=f"🔵 等待 **{builder_id}** 执行 builder 任务",
     )
 
     return {
         "current_role": "builder",
-        "current_agent": builder.id,
-        "builder_agent": builder.id,
+        "builder_id": builder_id,
+        "reviewer_id": reviewer_id,
         "started_at": time.time(),
         "conversation": [
-            {"role": "orchestrator", "action": "assigned", "agent": builder.id}
+            {"role": "orchestrator", "action": "assigned", "agent": builder_id}
         ],
     }
 
@@ -132,13 +217,16 @@ def plan_node(state: WorkflowState) -> dict:
 
 def build_node(state: WorkflowState) -> dict:
     """Interrupt for builder → validate output → prepare reviewer."""
-    agent = state["current_agent"]
+    builder_id = state.get("builder_id", "?")
+    reviewer_id = state.get("reviewer_id", "?")
 
     # Interrupt: wait for builder to submit via `ma done`
+    # Role-based: inbox is always builder.md regardless of which IDE
     result = interrupt({
         "role": "builder",
-        "agent": agent,
-        "inbox": f".multi-agent/inbox/{agent}.md",
+        "agent": builder_id,
+        "inbox": ".multi-agent/inbox/builder.md",
+        "outbox": ".multi-agent/outbox/builder.json",
     })
 
     # Validate builder output (light-weight)
@@ -164,13 +252,10 @@ def build_node(state: WorkflowState) -> dict:
     except Exception:
         pass  # Lenient: proceed even if extra fields exist
 
-    # Pick reviewer (cross-model adversarial review)
+    # Generate reviewer prompt (role-based: reviewer.md)
     skill_id = state["skill_id"]
     contract = load_contract(skill_id)
-    agents = load_agents()
-    reviewer = pick_reviewer(agents, contract, builder_id=agent)
 
-    # Generate reviewer prompt
     task = Task(
         task_id=state["task_id"],
         trace_id="0" * 16,
@@ -183,27 +268,29 @@ def build_node(state: WorkflowState) -> dict:
     reviewer_prompt = render_reviewer_prompt(
         task=task,
         contract=contract,
-        agent_id=reviewer.id,
+        agent_id=reviewer_id,
         builder_output=result,
-        builder_agent=agent,
+        builder_agent=builder_id,
     )
 
-    clear_outbox(reviewer.id)
-    write_inbox(reviewer.id, reviewer_prompt)
+    clear_outbox("reviewer")
+    write_inbox("reviewer", reviewer_prompt)
+
+    # Update TASK.md
+    _write_task_md(state, builder_id, reviewer_id, "reviewer")
 
     write_dashboard(
         task_id=state["task_id"],
         done_criteria=state.get("done_criteria", []),
-        current_agent=reviewer.id,
+        current_agent=reviewer_id,
         current_role="reviewer",
         conversation=state.get("conversation", []),
-        status_msg=f"🟡 等待 **{reviewer.id}** 审查",
+        status_msg=f"🟡 等待 **{reviewer_id}** 审查",
     )
 
     return {
         "builder_output": result,
         "current_role": "reviewer",
-        "current_agent": reviewer.id,
         "conversation": [
             {"role": "builder", "output": result.get("summary", "")}
         ],
@@ -214,12 +301,13 @@ def build_node(state: WorkflowState) -> dict:
 
 def review_node(state: WorkflowState) -> dict:
     """Interrupt for reviewer → record decision."""
-    agent = state["current_agent"]
+    reviewer_id = state.get("reviewer_id", "?")
 
     result = interrupt({
         "role": "reviewer",
-        "agent": agent,
-        "inbox": f".multi-agent/inbox/{agent}.md",
+        "agent": reviewer_id,
+        "inbox": ".multi-agent/inbox/reviewer.md",
+        "outbox": ".multi-agent/outbox/reviewer.json",
     })
 
     # Basic validation
@@ -252,7 +340,7 @@ def decide_node(state: WorkflowState) -> dict:
         write_dashboard(
             task_id=state["task_id"],
             done_criteria=state.get("done_criteria", []),
-            current_agent=state.get("current_agent", ""),
+            current_agent=state.get("reviewer_id", ""),
             current_role="done",
             conversation=state.get("conversation", []),
             status_msg="✅ 审查通过，任务完成",
@@ -270,7 +358,7 @@ def decide_node(state: WorkflowState) -> dict:
         write_dashboard(
             task_id=state["task_id"],
             done_criteria=state.get("done_criteria", []),
-            current_agent=state.get("current_agent", ""),
+            current_agent=state.get("reviewer_id", ""),
             current_role="escalated",
             conversation=state.get("conversation", []),
             error=f"重试预算耗尽 ({retry_count - 1}/{budget})",
@@ -289,7 +377,7 @@ def decide_node(state: WorkflowState) -> dict:
     write_dashboard(
         task_id=state["task_id"],
         done_criteria=state.get("done_criteria", []),
-        current_agent=state.get("builder_agent", ""),
+        current_agent=state.get("builder_id", ""),
         current_role="builder",
         conversation=state.get("conversation", []),
         status_msg=f"🔄 重试 ({retry_count}/{budget})",

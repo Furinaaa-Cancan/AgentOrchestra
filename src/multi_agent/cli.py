@@ -40,12 +40,17 @@ def main():
 @click.argument("requirement")
 @click.option("--skill", default="code-implement", help="Skill ID to use")
 @click.option("--task-id", default=None, help="Override task ID")
+@click.option("--builder", default="", help="IDE for builder role (e.g. windsurf, cursor, kiro)")
+@click.option("--reviewer", default="", help="IDE for reviewer role (e.g. cursor, codex, kiro)")
 @click.option("--retry-budget", default=2, type=int, help="Max retries")
 @click.option("--timeout", default=1800, type=int, help="Timeout in seconds")
-def go(requirement: str, skill: str, task_id: str | None, retry_budget: int, timeout: int):
+def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer: str, retry_budget: int, timeout: int):
     """Start a new task from a natural language requirement.
 
-    Example: ma go "实现 POST /users endpoint" --skill code-implement
+    Examples:
+      ma go "实现 POST /users endpoint"
+      ma go "Add auth middleware" --builder windsurf --reviewer cursor
+      ma go "Fix login bug" --builder kiro --reviewer codex
     """
     from multi_agent.graph import compile_graph
 
@@ -63,6 +68,8 @@ def go(requirement: str, skill: str, task_id: str | None, retry_budget: int, tim
         "retry_budget": retry_budget,
         "retry_count": 0,
         "input_payload": {"requirement": requirement},
+        "builder_explicit": builder,
+        "reviewer_explicit": reviewer,
         "conversation": [],
     }
 
@@ -85,23 +92,7 @@ def go(requirement: str, skill: str, task_id: str | None, retry_budget: int, tim
         pass  # Normal — graph paused at interrupt()
 
     # Show next step
-    snapshot = app.get_state(config)
-    if snapshot and snapshot.next:
-        node = snapshot.next[0]
-        click.echo(f"⏸️  Graph paused at: {node}")
-        if snapshot.tasks:
-            interrupt_val = snapshot.tasks[0].interrupts
-            if interrupt_val:
-                info = interrupt_val[0].value
-                click.echo(f"   Agent: {info.get('agent', '?')}")
-                click.echo(f"   Inbox: {info.get('inbox', '?')}")
-        click.echo()
-        click.echo("📋 Next steps:")
-        click.echo("   1. Open the inbox file in your IDE")
-        click.echo("   2. Let the agent work")
-        click.echo("   3. Run: ma done")
-    else:
-        click.echo("✅ Task completed (or errored). Run `ma status` to check.")
+    _show_snapshot(app, config)
 
 
 @main.command()
@@ -110,13 +101,13 @@ def go(requirement: str, skill: str, task_id: str | None, retry_budget: int, tim
 def done(task_id: str | None, file_path: str | None):
     """Submit agent output and advance the graph.
 
-    Reads from --file, stdin, or auto-detects from outbox/.
+    Reads from outbox/builder.json or outbox/reviewer.json (role-based),
+    or from --file, or from stdin.
     """
     from multi_agent.graph import compile_graph
 
     app = compile_graph()
 
-    # Auto-detect task_id from active checkpoints if not specified
     if not task_id:
         task_id = _detect_active_task(app)
         if not task_id:
@@ -130,24 +121,26 @@ def done(task_id: str | None, file_path: str | None):
         click.echo("❌ No pending interrupt for this task.", err=True)
         sys.exit(1)
 
-    # Determine which agent we're waiting for
-    agent_id = None
+    # Determine current role and agent from interrupt metadata
+    role = "builder"
+    agent_id = "?"
     if snapshot.tasks and snapshot.tasks[0].interrupts:
         info = snapshot.tasks[0].interrupts[0].value
-        agent_id = info.get("agent")
+        role = info.get("role", "builder")
+        agent_id = info.get("agent", "?")
 
-    # Read agent output
+    # Read output: --file > role-based outbox > stdin
     output_data = None
 
     if file_path:
         with open(file_path, "r", encoding="utf-8") as f:
             output_data = json.load(f)
-    elif agent_id:
-        output_data = read_outbox(agent_id)
+    else:
+        # Role-based outbox: outbox/builder.json or outbox/reviewer.json
+        output_data = read_outbox(role)
 
     if output_data is None:
-        # Try reading from stdin
-        click.echo("📝 Paste agent JSON output (Ctrl-D to end):")
+        click.echo(f"📝 No output in outbox/{role}.json. Paste JSON (Ctrl-D to end):")
         raw = sys.stdin.read().strip()
         if raw:
             try:
@@ -157,12 +150,11 @@ def done(task_id: str | None, file_path: str | None):
                 sys.exit(1)
 
     if output_data is None:
-        click.echo("❌ No output found. Check outbox or provide via --file / stdin.", err=True)
+        click.echo(f"❌ No output found. Save to .multi-agent/outbox/{role}.json or use --file.", err=True)
         sys.exit(1)
 
-    click.echo(f"📤 Submitting output for task {task_id} (agent: {agent_id})")
+    click.echo(f"📤 Submitting {role} output for task {task_id} (IDE: {agent_id})")
 
-    # Resume the graph with the agent output
     from langgraph.types import Command
     from langgraph.errors import GraphInterrupt
     try:
@@ -170,20 +162,7 @@ def done(task_id: str | None, file_path: str | None):
     except GraphInterrupt:
         pass  # Normal — graph paused at next interrupt()
 
-    # Check new state
-    snapshot = app.get_state(config)
-    if snapshot and snapshot.next:
-        node = snapshot.next[0]
-        click.echo(f"⏸️  Graph paused at: {node}")
-        if snapshot.tasks and snapshot.tasks[0].interrupts:
-            info = snapshot.tasks[0].interrupts[0].value
-            click.echo(f"   Agent: {info.get('agent', '?')}")
-            click.echo(f"   Inbox: {info.get('inbox', '?')}")
-        click.echo("\n📋 Run `ma done` again after the agent completes.")
-    else:
-        vals = snapshot.values if snapshot else {}
-        status = vals.get("final_status", vals.get("error", "unknown"))
-        click.echo(f"🏁 Task finished. Status: {status}")
+    _show_snapshot(app, config)
 
 
 @main.command()
@@ -208,9 +187,11 @@ def status(task_id: str | None):
         return
 
     vals = snapshot.values
+    current_role = vals.get("current_role", "?")
     click.echo(f"📊 Task: {task_id}")
-    click.echo(f"   Role: {vals.get('current_role', '?')}")
-    click.echo(f"   Agent: {vals.get('current_agent', '?')}")
+    click.echo(f"   Current step: {current_role}")
+    click.echo(f"   Builder:  {vals.get('builder_id', '?')}")
+    click.echo(f"   Reviewer: {vals.get('reviewer_id', '?')}")
     click.echo(f"   Retry: {vals.get('retry_count', 0)}/{vals.get('retry_budget', 2)}")
 
     if vals.get("error"):
@@ -220,13 +201,13 @@ def status(task_id: str | None):
 
     if snapshot.next:
         click.echo(f"   ⏸️  Waiting at: {snapshot.next[0]}")
+        click.echo(f"   📄 Inbox: .multi-agent/inbox/{current_role}.md")
     else:
         click.echo("   ✅ Graph complete")
 
-    # Show dashboard path
-    dp = workspace_dir() / "dashboard.md"
+    dp = workspace_dir() / "TASK.md"
     if dp.exists():
-        click.echo(f"\n📋 Dashboard: {dp}")
+        click.echo(f"\n📋 TASK.md: {dp}")
 
 
 @main.command()
@@ -258,6 +239,30 @@ def cancel(task_id: str | None, reason: str):
         error=f"已取消: {reason}",
     )
     click.echo(f"🛑 Task {task_id} marked as cancelled: {reason}")
+
+
+def _show_snapshot(app, config):
+    """Display current graph state after an invoke."""
+    snapshot = app.get_state(config)
+    if snapshot and snapshot.next:
+        node = snapshot.next[0]
+        click.echo(f"⏸️  Graph paused at: {node}")
+        if snapshot.tasks and snapshot.tasks[0].interrupts:
+            info = snapshot.tasks[0].interrupts[0].value
+            role = info.get("role", "?")
+            agent = info.get("agent", "?")
+            click.echo(f"   Role: {role}")
+            click.echo(f"   IDE:  {agent}")
+            click.echo(f"   Inbox: .multi-agent/inbox/{role}.md")
+        click.echo()
+        click.echo("📋 Next steps:")
+        click.echo("   1. Open the inbox file in your IDE (or reference via @file)")
+        click.echo("   2. Let the AI assistant work on it")
+        click.echo("   3. Run: ma done")
+    else:
+        vals = snapshot.values if snapshot else {}
+        status = vals.get("final_status", vals.get("error", "unknown"))
+        click.echo(f"🏁 Task finished. Status: {status}")
 
 
 def _detect_active_task(app) -> str | None:

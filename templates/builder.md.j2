@@ -1,8 +1,8 @@
 # 🔧 Builder 任务
 
 ## 你的身份
-- **Agent**: {{ agent_id }}
 - **角色**: Builder (实现者)
+- **IDE**: {{ agent_id }}
 - **任务**: {{ task.task_id }}
 - **Skill**: {{ contract.id }} v{{ contract.version }}
 
@@ -27,7 +27,7 @@
 {% endfor %}
 
 ## 产出要求
-完成后，请输出以下 JSON (保存到 `.multi-agent/outbox/{{ agent_id }}.json`):
+完成后，请输出以下 JSON (保存到 `.multi-agent/outbox/builder.json`):
 
 ```json
 {
