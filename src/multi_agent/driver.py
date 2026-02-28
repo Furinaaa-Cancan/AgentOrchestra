@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import threading
 from pathlib import Path
@@ -19,6 +20,18 @@ def get_agent_driver(agent_id: str) -> dict:
         if agent.id == agent_id:
             return {"driver": agent.driver, "command": agent.command}
     return {"driver": "file", "command": ""}
+
+
+def can_use_cli(command_template: str) -> bool:
+    """Check if the CLI binary in a command template is available on PATH.
+
+    Extracts the first token (the binary name) and checks via shutil.which().
+    Returns False if binary not found — caller should degrade to file mode.
+    """
+    binary = command_template.split()[0] if command_template.strip() else ""
+    if not binary:
+        return False
+    return shutil.which(binary) is not None
 
 
 def spawn_cli_agent(

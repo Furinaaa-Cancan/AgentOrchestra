@@ -84,6 +84,77 @@ class TestDecideNode:
         mock_archive.assert_called_once()
 
 
+class TestBuildNodeErrorDetection:
+    """Test that build_node detects CLI driver error outputs."""
+
+    @patch("multi_agent.graph.write_dashboard")
+    @patch("multi_agent.graph._write_task_md")
+    @patch("multi_agent.graph.interrupt")
+    def test_cli_error_output_fails_build(self, mock_interrupt, mock_task_md, mock_dash):
+        """status=error from CLI driver should NOT go to reviewer."""
+        from multi_agent.graph import build_node
+        mock_interrupt.return_value = {"status": "error", "summary": "claude CLI timed out after 600s"}
+        state = {
+            "builder_id": "claude",
+            "reviewer_id": "cursor",
+            "started_at": 0,
+            "timeout_sec": 1800,
+            "skill_id": "code-implement",
+            "task_id": "task-test-err",
+            "done_criteria": ["test"],
+            "conversation": [],
+        }
+        result = build_node(state)
+        assert result["final_status"] == "failed"
+        assert "timed out" in result["error"]
+        # Should NOT have builder_output (i.e., should not proceed to reviewer)
+        assert "builder_output" not in result
+
+    @patch("multi_agent.graph.write_dashboard")
+    @patch("multi_agent.graph._write_task_md")
+    @patch("multi_agent.graph.interrupt")
+    def test_normal_output_passes_through(self, mock_interrupt, mock_task_md, mock_dash):
+        """status=completed should proceed normally."""
+        from multi_agent.graph import build_node
+        mock_interrupt.return_value = {
+            "status": "completed",
+            "summary": "done",
+            "changed_files": [],
+            "check_results": {},
+        }
+        state = {
+            "builder_id": "windsurf",
+            "reviewer_id": "cursor",
+            "started_at": 0,
+            "timeout_sec": 1800,
+            "skill_id": "code-implement",
+            "task_id": "task-test-ok",
+            "done_criteria": ["test"],
+            "conversation": [],
+            "input_payload": {"requirement": "test"},
+        }
+        result = build_node(state)
+        assert "builder_output" in result
+        assert "final_status" not in result
+
+
+class TestReviewNodeErrorDetection:
+    """Test that review_node detects CLI driver error outputs."""
+
+    @patch("multi_agent.graph.interrupt")
+    def test_reviewer_cli_error_auto_rejects(self, mock_interrupt):
+        from multi_agent.graph import review_node
+        mock_interrupt.return_value = {"status": "error", "summary": "codex CLI exited with code 1: OOM"}
+        state = {
+            "reviewer_id": "codex",
+            "conversation": [],
+        }
+        result = review_node(state)
+        assert result["reviewer_output"]["decision"] == "reject"
+        assert "CLI failed" in result["reviewer_output"]["feedback"]
+        assert "OOM" in result["reviewer_output"]["feedback"]
+
+
 class TestRouteAfterBuild:
     def test_no_error_goes_to_review(self):
         state = {"builder_output": {"status": "completed"}}

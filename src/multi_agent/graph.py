@@ -68,9 +68,10 @@ def _write_task_md(state: dict, builder_id: str, reviewer_id: str, current_role:
     TASK.md embeds the full prompt content inline so the IDE AI gets
     everything it needs from ONE file reference. No jumping to inbox files.
     """
-    from multi_agent.config import workspace_dir, inbox_dir
+    from multi_agent.config import workspace_dir, inbox_dir, outbox_dir
 
-    outbox_path = f".multi-agent/outbox/{current_role}.json"
+    outbox_rel = f".multi-agent/outbox/{current_role}.json"
+    outbox_abs = str(outbox_dir() / f"{current_role}.json")
 
     # Read the inbox prompt that was just written
     inbox_file = inbox_dir() / f"{current_role}.md"
@@ -84,7 +85,8 @@ def _write_task_md(state: dict, builder_id: str, reviewer_id: str, current_role:
         "---",
         "",
         "> **完成后，把上面要求的 JSON 结果保存到以下路径，终端会自动推进流程:**",
-        f"> `{outbox_path}`",
+        f"> `{outbox_rel}`",
+        f"> 绝对路径: `{outbox_abs}`",
         "",
     ]
 
@@ -215,6 +217,15 @@ def build_node(state: WorkflowState) -> dict:
             "conversation": [{"role": "builder", "output": "INVALID", "t": time.time()}],
         }
 
+    # Detect CLI driver error output — don't waste reviewer's time
+    if result.get("status") == "error":
+        error_msg = result.get("summary", "unknown CLI error")
+        return {
+            "error": f"Builder failed: {error_msg}",
+            "final_status": "failed",
+            "conversation": [{"role": "builder", "output": f"ERROR: {error_msg}", "t": time.time()}],
+        }
+
     # Validate via Pydantic (non-fatal — we log warnings but proceed)
     try:
         BuilderOutput(**result)
@@ -291,6 +302,14 @@ def review_node(state: WorkflowState) -> dict:
     if not isinstance(result, dict):
         return {
             "reviewer_output": {"decision": "reject", "feedback": "Invalid reviewer output"},
+            "conversation": [{"role": "reviewer", "decision": "reject", "t": time.time()}],
+        }
+
+    # Detect CLI driver error output
+    if result.get("status") == "error":
+        error_msg = result.get("summary", "unknown reviewer CLI error")
+        return {
+            "reviewer_output": {"decision": "reject", "feedback": f"Reviewer CLI failed: {error_msg}"},
             "conversation": [{"role": "reviewer", "decision": "reject", "t": time.time()}],
         }
 

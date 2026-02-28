@@ -11,6 +11,19 @@ import pytest
 from multi_agent import driver
 
 
+class TestCanUseCli:
+    def test_existing_binary(self):
+        # 'echo' should exist on all systems
+        assert driver.can_use_cli("echo hello world") is True
+
+    def test_missing_binary(self):
+        assert driver.can_use_cli("nonexistent_binary_xyz_99 --flag") is False
+
+    def test_empty_command(self):
+        assert driver.can_use_cli("") is False
+        assert driver.can_use_cli("   ") is False
+
+
 class TestGetAgentDriver:
     def test_cli_agent(self):
         from multi_agent.schema import AgentProfile

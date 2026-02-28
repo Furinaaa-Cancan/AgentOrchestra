@@ -377,14 +377,20 @@ def _show_waiting(app, config):
 
     step_label = "Build" if role == "builder" else "Review"
 
-    # Check if agent has CLI driver → auto-spawn
-    from multi_agent.driver import get_agent_driver, spawn_cli_agent
+    # Check if agent has CLI driver → auto-spawn (with graceful degradation)
+    from multi_agent.driver import get_agent_driver, spawn_cli_agent, can_use_cli
     drv = get_agent_driver(agent)
     if drv["driver"] == "cli" and drv["command"]:
-        vals = snapshot.values or {}
-        timeout = vals.get("timeout_sec", 600)
-        click.echo(f"🤖 [{step_label}] 自动调用 {agent} CLI…")
-        spawn_cli_agent(agent, role, drv["command"], timeout_sec=timeout)
+        if can_use_cli(drv["command"]):
+            vals = snapshot.values or {}
+            timeout = vals.get("timeout_sec", 600)
+            click.echo(f"🤖 [{step_label}] 自动调用 {agent} CLI…")
+            spawn_cli_agent(agent, role, drv["command"], timeout_sec=timeout)
+        else:
+            binary = drv["command"].split()[0]
+            click.echo(f"⚠️  {agent} 配置为 CLI 模式但 `{binary}` 未安装，降级为手动模式")
+            click.echo(f"📋 [{step_label}] 在 {agent} IDE 里对 AI 说:")
+            click.echo(f'   "帮我完成 @.multi-agent/TASK.md 里的任务"')
     else:
         click.echo(f"📋 [{step_label}] 在 {agent} IDE 里对 AI 说:")
         click.echo(f'   "帮我完成 @.multi-agent/TASK.md 里的任务"')
@@ -470,13 +476,16 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0):
                             if feedback:
                                 click.echo(f"             {feedback}")
                         # Auto-spawn CLI agent or show manual instructions
-                        from multi_agent.driver import get_agent_driver, spawn_cli_agent
+                        from multi_agent.driver import get_agent_driver, spawn_cli_agent, can_use_cli
                         drv = get_agent_driver(next_agent)
-                        if drv["driver"] == "cli" and drv["command"]:
+                        if drv["driver"] == "cli" and drv["command"] and can_use_cli(drv["command"]):
                             t_sec = next_vals.get("timeout_sec", 600)
                             click.echo(f"[{mins:02d}:{secs:02d}] 🤖 自动调用 {next_agent} CLI…")
                             spawn_cli_agent(next_agent, next_role, drv["command"], timeout_sec=t_sec)
                         else:
+                            if drv["driver"] == "cli" and drv["command"] and not can_use_cli(drv["command"]):
+                                binary = drv["command"].split()[0]
+                                click.echo(f"[{mins:02d}:{secs:02d}] ⚠️  `{binary}` 未安装，降级手动模式")
                             click.echo(f"[{mins:02d}:{secs:02d}] 📋 在 {next_agent} IDE 里对 AI 说:")
                             click.echo(f'             "帮我完成 @.multi-agent/TASK.md 里的任务"')
                     break
