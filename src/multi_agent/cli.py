@@ -80,7 +80,6 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
         "requirement": requirement,
         "skill_id": skill,
         "done_criteria": [requirement],
-        "expected_checks": ["lint", "unit_test"],
         "timeout_sec": timeout,
         "retry_budget": retry_budget,
         "retry_count": 0,
@@ -351,7 +350,7 @@ def _show_snapshot(app, config):
         click.echo(f"🏁 Task finished. Status: {status}")
 
 
-def _detect_active_task(app) -> str | None:
+def _detect_active_task(app=None) -> str | None:
     """Detect the active task from task YAML markers in workspace."""
     from multi_agent.config import tasks_dir
     td = tasks_dir()

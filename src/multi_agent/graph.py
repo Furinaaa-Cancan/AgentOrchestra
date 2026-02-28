@@ -279,7 +279,7 @@ def build_node(state: WorkflowState) -> dict:
         gate_result = check_results.get(gate)
         if gate_result is None:
             gate_warnings.append(f"quality gate '{gate}' not reported")
-        elif gate_result.lower() not in ("pass", "passed", "ok", "success"):
+        elif str(gate_result).lower() not in ("pass", "passed", "ok", "success", "true"):
             gate_warnings.append(f"quality gate '{gate}' failed: {gate_result}")
     # Gate failures go to reviewer as extra context (not hard-fail)
     if gate_warnings:

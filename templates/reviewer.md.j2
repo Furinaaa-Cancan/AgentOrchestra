@@ -18,6 +18,13 @@
 {% for gate, result in builder_output.get("check_results", {}).items() %}
 - {{ gate }}: {{ result }}
 {% endfor %}
+{% if builder_output.get("gate_warnings") %}
+
+### ⚠️ 质量门警告 (系统自动检测)
+{% for warning in builder_output.get("gate_warnings", []) %}
+- {{ warning }}
+{% endfor %}
+{% endif %}
 
 ## Builder 提交的报告
 
@@ -40,7 +47,9 @@
 ```
 
 ## 规则
-- 只审查当前任务范围内的改动
+- **不要仅信任 builder 的自我报告** — 必须自己验证实际代码改动
+- 打开上面列出的修改文件，检查代码是否正确、完整、安全
+- 运行测试和 lint 来独立验证 builder 报告的检查结果
 - 逐条检查完成标准是否满足
 - 如果 reject，必须给出具体的修改建议
 - **自检**: 确认你的审查意见是准确且有建设性的
