@@ -109,6 +109,17 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
         app.invoke(initial_state, config)
     except GraphInterrupt:
         pass
+    except FileNotFoundError as e:
+        click.echo(f"❌ {e}", err=True)
+        click.echo(f"   确认你在 AgentOrchestra 项目根目录运行, 且 skills/ 和 agents/ 存在。", err=True)
+        click.echo(f"   或设置 MA_ROOT 环境变量指向项目根目录。", err=True)
+        save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
+        sys.exit(1)
+    except ValueError as e:
+        click.echo(f"❌ {e}", err=True)
+        click.echo(f"   检查 agents/agents.yaml 配置是否正确。", err=True)
+        save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
+        sys.exit(1)
     except Exception as e:
         click.echo(f"❌ Task failed to start: {e}", err=True)
         save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
