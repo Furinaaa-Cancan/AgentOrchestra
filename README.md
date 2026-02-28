@@ -20,25 +20,38 @@
 
 ## 30-Second Demo
 
+**Fully automated** (CLI agents like Claude Code, Codex, Aider):
+
+```bash
+$ ma go "Add input validation" --builder claude --reviewer codex
+
+🚀 Task: task-a1b2c3d4
+   Add input validation
+
+🤖 [Build] 自动调用 claude CLI…
+[00:45] 📥 Build 完成 (claude)
+🤖 [Review] 自动调用 codex CLI…
+[01:20] 📥 Review 完成 (codex)
+[01:22] ✅ Task finished — approved
+```
+
+**Semi-automated** (IDE agents like Windsurf, Cursor):
+
 ```bash
 $ ma go "Add input validation" --builder windsurf --reviewer cursor
 
 🚀 Task: task-a1b2c3d4
-   Requirement: Add input validation
-
-📋 在 windsurf IDE 里对 AI 说:
+📋 [Build] 在 windsurf IDE 里对 AI 说:
    "帮我完成 @.multi-agent/TASK.md 里的任务"
 
-👁️  Auto-watching outbox/ (Ctrl-C to stop)
-
-[00:32] 📥 builder (windsurf) submitted! Advancing...
+[00:32] 📥 Build 完成 (windsurf)
 [00:32] 📋 在 cursor IDE 里对 AI 说:
              "帮我完成 @.multi-agent/TASK.md 里的任务"
-[01:15] 📥 reviewer (cursor) submitted! Advancing...
+[01:15] 📥 Review 完成 (cursor)
 [01:17] ✅ Task finished — approved
 ```
 
-**That's it.** One terminal command. Tell each IDE AI one sentence. The terminal handles the rest.
+**One command.** CLI agents run fully automatic. IDE agents need one sentence per step.
 
 ## What is AgentOrchestra?
 
@@ -89,17 +102,31 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-### Configure IDEs
+### Configure Agents
 
 Edit `agents/agents.yaml`:
 
 ```yaml
 agents:
-  - id: windsurf
-    capabilities: [planning, implementation, testing, docs]
-  - id: cursor
+  # CLI agents — fully automated (driver: cli)
+  - id: claude
+    driver: cli
+    command: "claude -p 'Read {task_file} ...' --allowedTools Read,Edit,Bash,Write"
     capabilities: [planning, implementation, testing, review, docs]
-  # Add any IDE here
+
+  - id: codex
+    driver: cli
+    command: "codex exec 'Read {task_file} ...' --full-auto"
+    capabilities: [planning, implementation, testing, review, docs]
+
+  # IDE agents — manual (driver: file, default)
+  - id: windsurf
+    driver: file
+    capabilities: [planning, implementation, testing, docs]
+
+  - id: cursor
+    driver: file
+    capabilities: [planning, implementation, testing, review, docs]
 
 defaults:
   builder: windsurf
@@ -109,18 +136,22 @@ defaults:
 ### Use
 
 ```bash
-# One command — starts task + auto-watches for output
-ma go "Implement POST /users endpoint" --builder windsurf --reviewer cursor
+# Fully automated with CLI agents
+ma go "Implement POST /users" --builder claude --reviewer codex
 
-# Then in each IDE, just say:
-# "帮我完成 @.multi-agent/TASK.md 里的任务"
+# Semi-automated with IDE agents
+ma go "Implement POST /users" --builder windsurf --reviewer cursor
+# Then tell each IDE: "帮我完成 @.multi-agent/TASK.md 里的任务"
 ```
 
-The terminal auto-detects when the IDE AI saves its output and advances the workflow. No `ma done` needed.
+### Supported Tools
 
-### Supported IDEs
+| Type | Tools | Automation |
+|------|-------|-----------|
+| **CLI** (driver: cli) | Claude Code, Codex, Aider, Goose | Fully automatic |
+| **IDE** (driver: file) | Windsurf, Cursor, Kiro, Antigravity, Copilot | One sentence per step |
 
-Any IDE with an AI assistant. Tested with: **Windsurf**, **Cursor**, **Codex**, **Kiro**, **Antigravity**, **Copilot**, **Aider**, **Cline**. Add any other in `agents.yaml`.
+Add any tool in `agents.yaml`. No code changes needed.
 
 ## Architecture
 

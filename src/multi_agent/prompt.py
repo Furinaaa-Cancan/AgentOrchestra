@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from functools import lru_cache
+
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from multi_agent.config import root_dir
@@ -23,6 +25,7 @@ def _template_dir() -> Path:
     raise FileNotFoundError("Cannot find templates/ directory")
 
 
+@lru_cache(maxsize=1)
 def _env() -> Environment:
     return Environment(
         loader=FileSystemLoader(str(_template_dir())),

@@ -167,7 +167,7 @@ def plan_node(state: WorkflowState) -> dict:
         "reviewer_id": reviewer_id,
         "started_at": time.time(),
         "conversation": [
-            {"role": "orchestrator", "action": "assigned", "agent": builder_id}
+            {"role": "orchestrator", "action": "assigned", "agent": builder_id, "t": time.time()}
         ],
     }
 
@@ -195,7 +195,7 @@ def build_node(state: WorkflowState) -> dict:
             return {
                 "error": f"TIMEOUT: builder took {int(elapsed)}s (limit: {timeout}s)",
                 "final_status": "failed",
-                "conversation": [{"role": "orchestrator", "action": "timeout", "elapsed": int(elapsed)}],
+                "conversation": [{"role": "orchestrator", "action": "timeout", "elapsed": int(elapsed), "t": time.time()}],
             }
 
     # Validate builder output (light-weight)
@@ -212,7 +212,7 @@ def build_node(state: WorkflowState) -> dict:
         return {
             "error": f"Builder output invalid: {'; '.join(errors)}",
             "final_status": "failed",
-            "conversation": [{"role": "builder", "output": "INVALID"}],
+            "conversation": [{"role": "builder", "output": "INVALID", "t": time.time()}],
         }
 
     # Validate via Pydantic (non-fatal — we log warnings but proceed)
@@ -271,7 +271,7 @@ def build_node(state: WorkflowState) -> dict:
         "builder_output": result,
         "current_role": "reviewer",
         "conversation": [
-            {"role": "builder", "output": result.get("summary", "")}
+            {"role": "builder", "output": result.get("summary", ""), "t": time.time()}
         ],
     }
 
@@ -291,7 +291,7 @@ def review_node(state: WorkflowState) -> dict:
     if not isinstance(result, dict):
         return {
             "reviewer_output": {"decision": "reject", "feedback": "Invalid reviewer output"},
-            "conversation": [{"role": "reviewer", "decision": "reject"}],
+            "conversation": [{"role": "reviewer", "decision": "reject", "t": time.time()}],
         }
 
     try:
@@ -302,7 +302,7 @@ def review_node(state: WorkflowState) -> dict:
 
     return {
         "reviewer_output": result,
-        "conversation": [{"role": "reviewer", "decision": decision}],
+        "conversation": [{"role": "reviewer", "decision": decision, "t": time.time()}],
     }
 
 
@@ -314,7 +314,7 @@ def decide_node(state: WorkflowState) -> dict:
     decision = reviewer_output.get("decision", "reject")
 
     if decision == "approve":
-        final_entry = {"role": "orchestrator", "action": "approved"}
+        final_entry = {"role": "orchestrator", "action": "approved", "t": time.time()}
         full_convo = state.get("conversation", []) + [final_entry]
         write_dashboard(
             task_id=state["task_id"],
@@ -335,7 +335,7 @@ def decide_node(state: WorkflowState) -> dict:
     budget = state.get("retry_budget", 2)
 
     if retry_count > budget:
-        final_entry = {"role": "orchestrator", "action": "escalated", "reason": "budget exhausted"}
+        final_entry = {"role": "orchestrator", "action": "escalated", "reason": "budget exhausted", "t": time.time()}
         full_convo = state.get("conversation", []) + [final_entry]
         write_dashboard(
             task_id=state["task_id"],
@@ -367,7 +367,7 @@ def decide_node(state: WorkflowState) -> dict:
     return {
         "retry_count": retry_count,
         "conversation": [
-            {"role": "orchestrator", "action": "retry", "feedback": feedback}
+            {"role": "orchestrator", "action": "retry", "feedback": feedback, "t": time.time()}
         ],
     }
 

@@ -259,11 +259,14 @@ def status(task_id: str | None):
 
     vals = snapshot.values
     current_role = vals.get("current_role", "?")
+    locked = read_lock()
+
     click.echo(f"📊 Task: {task_id}")
-    click.echo(f"   Current step: {current_role}")
+    click.echo(f"   Step:     {current_role}")
     click.echo(f"   Builder:  {vals.get('builder_id', '?')}")
     click.echo(f"   Reviewer: {vals.get('reviewer_id', '?')}")
-    click.echo(f"   Retry: {vals.get('retry_count', 0)}/{vals.get('retry_budget', 2)}")
+    click.echo(f"   Retry:    {vals.get('retry_count', 0)}/{vals.get('retry_budget', 2)}")
+    click.echo(f"   Lock:     {'🔒 ' + locked if locked else '🔓 none'}")
 
     if vals.get("error"):
         click.echo(f"   ❌ Error: {vals['error']}")
@@ -272,8 +275,12 @@ def status(task_id: str | None):
 
     if snapshot.next:
         agent = vals.get("builder_id" if current_role == "builder" else "reviewer_id", "?")
-        click.echo(f"   ⏸️  Waiting for {current_role} ({agent})")
-        click.echo(f'   📋 在 {agent} IDE 里说: "帮我完成 @.multi-agent/TASK.md 里的任务"')
+        from multi_agent.driver import get_agent_driver
+        drv = get_agent_driver(agent)
+        mode = "🤖 auto" if drv["driver"] == "cli" else "📋 manual"
+        click.echo(f"   ⏸️  Waiting: {current_role} ({agent}) [{mode}]")
+        if drv["driver"] != "cli":
+            click.echo(f'   📋 在 {agent} IDE 里说: "帮我完成 @.multi-agent/TASK.md 里的任务"')
     else:
         click.echo("   ✅ Graph complete")
 

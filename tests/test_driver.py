@@ -13,37 +13,33 @@ from multi_agent import driver
 
 class TestGetAgentDriver:
     def test_cli_agent(self):
-        registry = {
-            "agents": [
-                {"id": "claude", "driver": "cli", "command": "claude -p '{task_file}'"},
-                {"id": "windsurf", "driver": "file"},
-            ]
-        }
-        with patch("multi_agent.router.load_registry", return_value=registry):
+        from multi_agent.schema import AgentProfile
+        agents = [
+            AgentProfile(id="claude", driver="cli", command="claude -p '{task_file}'"),
+            AgentProfile(id="windsurf", driver="file"),
+        ]
+        with patch("multi_agent.router.load_agents", return_value=agents):
             drv = driver.get_agent_driver("claude")
             assert drv["driver"] == "cli"
             assert "claude" in drv["command"]
 
     def test_file_agent(self):
-        registry = {
-            "agents": [
-                {"id": "windsurf", "driver": "file"},
-            ]
-        }
-        with patch("multi_agent.router.load_registry", return_value=registry):
+        from multi_agent.schema import AgentProfile
+        agents = [AgentProfile(id="windsurf", driver="file")]
+        with patch("multi_agent.router.load_agents", return_value=agents):
             drv = driver.get_agent_driver("windsurf")
             assert drv["driver"] == "file"
             assert drv["command"] == ""
 
     def test_unknown_agent_defaults_to_file(self):
-        registry = {"agents": []}
-        with patch("multi_agent.router.load_registry", return_value=registry):
+        with patch("multi_agent.router.load_agents", return_value=[]):
             drv = driver.get_agent_driver("unknown")
             assert drv["driver"] == "file"
 
     def test_missing_driver_field_defaults_to_file(self):
-        registry = {"agents": [{"id": "old_agent", "capabilities": ["impl"]}]}
-        with patch("multi_agent.router.load_registry", return_value=registry):
+        from multi_agent.schema import AgentProfile
+        agents = [AgentProfile(id="old_agent")]
+        with patch("multi_agent.router.load_agents", return_value=agents):
             drv = driver.get_agent_driver("old_agent")
             assert drv["driver"] == "file"
 

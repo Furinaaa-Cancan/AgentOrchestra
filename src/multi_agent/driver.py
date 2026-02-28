@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import shlex
 import subprocess
 import threading
 from pathlib import Path
@@ -13,15 +12,11 @@ from multi_agent.config import workspace_dir, outbox_dir
 
 def get_agent_driver(agent_id: str) -> dict:
     """Look up driver config for an agent from agents.yaml."""
-    from multi_agent.router import load_registry
+    from multi_agent.router import load_agents
 
-    registry = load_registry()
-    for agent in registry.get("agents", []):
-        if agent.get("id") == agent_id:
-            return {
-                "driver": agent.get("driver", "file"),
-                "command": agent.get("command", ""),
-            }
+    for agent in load_agents():
+        if agent.id == agent_id:
+            return {"driver": agent.driver, "command": agent.command}
     return {"driver": "file", "command": ""}
 
 
@@ -30,6 +25,7 @@ def spawn_cli_agent(
     role: str,
     command_template: str,
     project_dir: str | None = None,
+    timeout_sec: int = 600,
 ) -> threading.Thread:
     """Spawn a CLI agent in a background thread.
 
@@ -54,7 +50,7 @@ def spawn_cli_agent(
                 cwd=project_dir or str(Path.cwd()),
                 capture_output=True,
                 text=True,
-                timeout=600,  # 10 min safety timeout
+                timeout=timeout_sec,
             )
             # If the CLI tool didn't write the outbox file itself,
             # try to extract JSON from stdout and write it
@@ -63,7 +59,7 @@ def spawn_cli_agent(
                 _try_extract_json(result.stdout, outbox_path)
         except subprocess.TimeoutExpired:
             # Write a timeout error to outbox so the graph can handle it
-            _write_error(outbox_file, f"{agent_id} CLI timed out after 600s")
+            _write_error(outbox_file, f"{agent_id} CLI timed out after {timeout_sec}s")
         except Exception as e:
             _write_error(outbox_file, f"{agent_id} CLI error: {e}")
 
