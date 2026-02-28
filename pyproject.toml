@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "multi-agent"
-version = "0.5.0"
+version = "0.6.0"
 description = "Multi-agent orchestration framework for IDE-based AI coding assistants"
 requires-python = ">=3.11"
 dependencies = [
