@@ -26,14 +26,21 @@ def load_registry(path: Path | None = None) -> dict:
     """Load agents.yaml v2 registry. Falls back to profiles.json."""
     yaml_path = path or _agents_yaml_path()
     if yaml_path.exists():
-        return load_yaml(yaml_path)
-    # Fallback: legacy profiles.json
-    json_path = agents_profile_path()
-    if json_path.exists():
-        with json_path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-        return {"version": 1, "agents": data["agents"], "role_strategy": "auto"}
-    return {"version": 2, "agents": [], "role_strategy": "manual", "defaults": {}}
+        data = load_yaml(yaml_path)
+    else:
+        # Fallback: legacy profiles.json
+        json_path = agents_profile_path()
+        if json_path.exists():
+            with json_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = {}
+    # Normalize: ensure all expected keys exist
+    data.setdefault("version", 1)
+    data.setdefault("agents", [])
+    data.setdefault("role_strategy", "auto" if data["version"] < 2 else "manual")
+    data.setdefault("defaults", {})
+    return data
 
 
 def load_agents(path: Path | None = None) -> list[AgentProfile]:
