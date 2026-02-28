@@ -194,6 +194,23 @@ class ReviewerOutput(BaseModel):
     feedback: str = ""
 
 
+# ── Sub-Task (for task decomposition) ─────────────────────
+
+class SubTask(BaseModel):
+    """A single decomposed sub-task from a larger requirement."""
+    id: str                   # e.g. "auth-login"
+    description: str          # what to implement
+    done_criteria: list[str] = Field(default_factory=list)
+    deps: list[str] = Field(default_factory=list)  # IDs of sub-tasks this depends on
+    skill_id: str = "code-implement"
+
+
+class DecomposeResult(BaseModel):
+    """Output of task decomposition — a list of sub-tasks."""
+    sub_tasks: list[SubTask]
+    reasoning: str = ""  # why this decomposition was chosen
+
+
 # ── Agent Profile ─────────────────────────────────────────
 
 class AgentProfile(BaseModel):

@@ -49,7 +49,8 @@ def main():
 @click.option("--retry-budget", default=2, type=int, help="Max retries")
 @click.option("--timeout", default=1800, type=int, help="Timeout in seconds")
 @click.option("--no-watch", is_flag=True, default=False, help="Don't auto-watch (exit after start)")
-def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer: str, retry_budget: int, timeout: int, no_watch: bool):
+@click.option("--decompose", is_flag=True, default=False, help="Decompose complex requirement into sub-tasks first")
+def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer: str, retry_budget: int, timeout: int, no_watch: bool, decompose: bool):
     """Start a new task and watch for IDE output.
 
     Starts the task, then auto-watches outbox/ for agent output.
@@ -64,6 +65,7 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
       ma go "实现 POST /users endpoint"
       ma go "Add auth middleware" --builder windsurf --reviewer cursor
       ma go "Fix login bug" --no-watch
+      ma go "实现完整用户认证模块" --decompose
     """
     from multi_agent.graph import compile_graph
 
@@ -88,6 +90,18 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
     # Acquire lock — marks this task as the sole active task
     acquire_lock(task_id)
 
+    if decompose:
+        _run_decomposed(app, task_id, requirement, skill, builder, reviewer,
+                        retry_budget, timeout, no_watch)
+        return
+
+    _run_single_task(app, task_id, requirement, skill, builder, reviewer,
+                     retry_budget, timeout, no_watch)
+
+
+def _run_single_task(app, task_id, requirement, skill, builder, reviewer,
+                     retry_budget, timeout, no_watch):
+    """Run a single monolithic build-review cycle (original behavior)."""
     initial_state = {
         "task_id": task_id,
         "requirement": requirement,
@@ -144,6 +158,158 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
 
     # Auto-watch mode (default) — poll outbox and auto-submit
     _run_watch_loop(app, config, task_id)
+
+
+def _run_decomposed(app, parent_task_id, requirement, skill, builder, reviewer,
+                    retry_budget, timeout, no_watch):
+    """Decompose → sequential sub-task build-review cycles → aggregate."""
+    from multi_agent.decompose import write_decompose_prompt, read_decompose_result, topo_sort
+    from multi_agent.meta_graph import build_sub_task_state, aggregate_results
+    from multi_agent.watcher import OutboxPoller
+    from langgraph.errors import GraphInterrupt
+
+    click.echo(f"🧩 Task Decomposition: {parent_task_id}")
+    click.echo(f"   {requirement}")
+    click.echo()
+
+    # Phase 1: Write decompose prompt → wait for agent to decompose
+    write_decompose_prompt(requirement)
+    click.echo(f"📋 分解任务中… 在 IDE 里对 AI 说:")
+    click.echo(f'   "帮我完成 @.multi-agent/TASK.md 里的任务"')
+
+    # Check if builder has CLI driver → auto-spawn for decomposition
+    from multi_agent.driver import get_agent_driver, spawn_cli_agent, can_use_cli
+    from multi_agent.router import load_agents
+    agents = load_agents()
+    decompose_agent = builder if builder else (agents[0].id if agents else "?")
+    drv = get_agent_driver(decompose_agent)
+    if drv["driver"] == "cli" and drv["command"] and can_use_cli(drv["command"]):
+        click.echo(f"🤖 自动调用 {decompose_agent} CLI 进行任务分解…")
+        spawn_cli_agent(decompose_agent, "decompose", drv["command"], timeout_sec=timeout)
+
+    click.echo(f"👁️  等待任务分解结果… (Ctrl-C 停止)")
+
+    # Poll for decompose.json
+    poller = OutboxPoller(poll_interval=2.0)
+    decompose_result = None
+    try:
+        while decompose_result is None:
+            decompose_result = read_decompose_result()
+            if decompose_result:
+                break
+            time.sleep(2)
+    except KeyboardInterrupt:
+        click.echo(f"\n⏹️  Decomposition stopped.")
+        release_lock()
+        return
+
+    # Phase 2: Sort sub-tasks by dependencies
+    try:
+        sorted_tasks = topo_sort(decompose_result.sub_tasks)
+    except ValueError as e:
+        click.echo(f"❌ 分解结果无效: {e}", err=True)
+        release_lock()
+        sys.exit(1)
+
+    click.echo(f"\n✅ 分解完成: {len(sorted_tasks)} 个子任务")
+    if decompose_result.reasoning:
+        click.echo(f"   理由: {decompose_result.reasoning}")
+    for i, st in enumerate(sorted_tasks, 1):
+        deps_str = f" (依赖: {', '.join(st.deps)})" if st.deps else ""
+        click.echo(f"   {i}. {st.id}: {st.description}{deps_str}")
+    click.echo()
+
+    # Phase 3: Execute each sub-task sequentially
+    prior_results: list[dict] = []
+
+    for i, st in enumerate(sorted_tasks, 1):
+        click.echo(f"\n{'='*60}")
+        click.echo(f"  📦 Sub-task {i}/{len(sorted_tasks)}: {st.id}")
+        click.echo(f"  {st.description}")
+        click.echo(f"{'='*60}")
+
+        # Clear runtime for this sub-task
+        clear_runtime()
+
+        sub_state = build_sub_task_state(
+            sub_task=st,
+            parent_task_id=parent_task_id,
+            builder=builder,
+            reviewer=reviewer,
+            timeout=timeout,
+            retry_budget=retry_budget,
+            prior_results=prior_results,
+        )
+        sub_task_id = sub_state["task_id"]
+        sub_config = _make_config(sub_task_id)
+
+        # Run sub-task graph
+        try:
+            app.invoke(sub_state, sub_config)
+        except GraphInterrupt:
+            pass
+        except Exception as e:
+            click.echo(f"❌ Sub-task {st.id} failed to start: {e}", err=True)
+            prior_results.append({
+                "sub_id": st.id, "status": "failed",
+                "summary": str(e), "changed_files": [], "retry_count": 0,
+            })
+            continue
+
+        # Show waiting + watch loop for this sub-task
+        _show_waiting(app, sub_config)
+
+        if no_watch:
+            click.echo(f"📌 Sub-task {st.id}: 等待手动 ma done")
+            # Can't proceed to next sub-task without completing this one
+            click.echo(f"⚠️  --no-watch 模式下 --decompose 只执行第一步分解。")
+            click.echo(f"   后续请逐个手动执行各子任务。")
+            save_task_yaml(parent_task_id, {
+                "task_id": parent_task_id, "status": "decomposed",
+                "sub_tasks": [s.model_dump() for s in sorted_tasks],
+            })
+            return
+
+        _run_watch_loop(app, sub_config, sub_task_id)
+
+        # Collect result
+        snapshot = app.get_state(sub_config)
+        vals = snapshot.values if snapshot else {}
+        builder_out = vals.get("builder_output", {})
+        if not isinstance(builder_out, dict):
+            builder_out = {}
+
+        prior_results.append({
+            "sub_id": st.id,
+            "status": vals.get("final_status", "unknown"),
+            "summary": builder_out.get("summary", ""),
+            "changed_files": builder_out.get("changed_files", []),
+            "retry_count": vals.get("retry_count", 0),
+        })
+
+    # Phase 4: Aggregate
+    click.echo(f"\n{'='*60}")
+    click.echo(f"  📊 汇总结果")
+    click.echo(f"{'='*60}")
+
+    agg = aggregate_results(parent_task_id, prior_results)
+
+    click.echo(f"  总子任务: {agg['total_sub_tasks']}")
+    click.echo(f"  完成: {agg['completed']}")
+    click.echo(f"  总重试: {agg['total_retries']}")
+    if agg["failed"]:
+        click.echo(f"  ❌ 失败: {', '.join(agg['failed'])}")
+    else:
+        click.echo(f"  ✅ 全部通过")
+    click.echo(f"  修改文件: {', '.join(agg['all_changed_files']) or '无'}")
+    click.echo()
+
+    save_task_yaml(parent_task_id, {
+        "task_id": parent_task_id, "status": agg["final_status"],
+        "sub_results": prior_results,
+    })
+    release_lock()
+    clear_runtime()
 
 
 @main.command()

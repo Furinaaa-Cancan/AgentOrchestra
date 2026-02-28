@@ -8,7 +8,7 @@
 
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-109%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-134%20passed-brightgreen.svg)]()
 
 [English](#english) | [中文](#中文)
 
@@ -204,6 +204,7 @@ Add any tool in `agents.yaml`. No code changes needed.
 |---------|-------------|
 | `ma go "requirement"` | Start task + auto-watch (default) |
 | `ma go "req" --builder X --reviewer Y` | Specify IDEs |
+| `ma go "req" --decompose` | Decompose complex requirement into sub-tasks first |
 | `ma go "req" --no-watch` | Start without auto-watch |
 | `ma watch` | Resume watching (after `--no-watch`) |
 | `ma done` | Manually submit output |
@@ -234,12 +235,13 @@ Add any tool in `agents.yaml`. No code changes needed.
 | 4 graph nodes | RL-trained orchestrators converge to compact cycles | Evolving Orchestration |
 | File-based communication | Works with any IDE, zero integration needed | HULA minimal friction |
 | Retry with reviewer feedback | Reviewer rejection injects concrete feedback into next attempt | MapCoder verification |
+| Task decomposition | Complex requirements → independent sub-tasks with isolated context (5.7x reduction) | MASAI modular sub-agents |
 
 ## Running Tests
 
 ```bash
 pytest tests/ -v
-# 109 tests passed
+# 134 tests passed
 ```
 
 ## License
@@ -412,7 +414,7 @@ ma go "实现 POST /users" --builder windsurf --reviewer cursor
 ## 测试
 
 ```bash
-pytest tests/ -v   # 109 tests passed
+pytest tests/ -v   # 134 tests passed
 ```
 
 ## 许可证
