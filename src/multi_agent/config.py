@@ -54,10 +54,6 @@ def agents_profile_path() -> Path:
     return root_dir() / "agents" / "profiles.json"
 
 
-def workmode_path() -> Path:
-    return root_dir() / "config" / "workmode.yaml"
-
-
 def store_db_path() -> Path:
     return workspace_dir() / "store.db"
 

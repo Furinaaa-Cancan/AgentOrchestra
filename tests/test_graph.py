@@ -10,9 +10,9 @@ import pytest
 from multi_agent.graph import (
     WorkflowState,
     build_graph,
-    plan_node,
     decide_node,
     route_decision,
+    _route_after_build,
 )
 
 
@@ -42,8 +42,8 @@ class TestDecideNode:
             "done_criteria": ["implement something"],
             "retry_count": 0,
             "retry_budget": 2,
-            "current_agent": "windsurf",
-            "builder_agent": "windsurf",
+            "builder_id": "windsurf",
+            "reviewer_id": "cursor",
             "conversation": [],
         }
         s.update(overrides)
@@ -78,6 +78,27 @@ class TestDecideNode:
         result = decide_node(state)
         assert result["error"] == "BUDGET_EXHAUSTED"
         assert result["final_status"] == "escalated"
+
+
+class TestRouteAfterBuild:
+    def test_no_error_goes_to_review(self):
+        state = {"builder_output": {"status": "completed"}}
+        assert _route_after_build(state) == "review"
+
+    def test_error_goes_to_end(self):
+        state = {"error": "Builder output invalid"}
+        assert _route_after_build(state) == "end"
+
+    def test_failed_status_goes_to_end(self):
+        state = {"final_status": "failed"}
+        assert _route_after_build(state) == "end"
+
+    def test_cancelled_status_goes_to_end(self):
+        state = {"final_status": "cancelled"}
+        assert _route_after_build(state) == "end"
+
+    def test_empty_state_goes_to_review(self):
+        assert _route_after_build({}) == "review"
 
 
 class TestBuildGraph:

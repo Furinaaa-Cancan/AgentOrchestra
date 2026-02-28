@@ -9,7 +9,7 @@ import time
 
 import click
 
-from multi_agent.config import store_db_path, workspace_dir
+from multi_agent.config import workspace_dir
 from multi_agent.workspace import (
     clear_inbox,
     clear_outbox,

@@ -37,7 +37,6 @@ class WorkflowState(TypedDict, total=False):
     requirement: str
     skill_id: str
     done_criteria: list[str]
-    expected_checks: list[str]
     timeout_sec: int
     input_payload: dict[str, Any]
 
@@ -171,7 +170,6 @@ def plan_node(state: WorkflowState) -> dict:
         trace_id="0" * 16,
         skill_id=skill_id,
         done_criteria=state.get("done_criteria", []),
-        expected_checks=state.get("expected_checks", []),
         timeout_sec=state.get("timeout_sec", contract.timeouts.run_sec),
         retry_budget=state.get("retry_budget", contract.retry.max_attempts),
         input_payload=state.get("input_payload"),
@@ -290,7 +288,6 @@ def build_node(state: WorkflowState) -> dict:
         trace_id="0" * 16,
         skill_id=skill_id,
         done_criteria=state.get("done_criteria", []),
-        expected_checks=state.get("expected_checks", []),
         input_payload=state.get("input_payload"),
     )
 
