@@ -11,13 +11,13 @@ from multi_agent.schema import SkillContract, Task
 
 
 def _template_dir() -> Path:
-    """Resolve templates/ directory next to project root or package."""
-    # Try project root first
-    d = root_dir() / "templates"
+    """Resolve templates/ directory — inside the package (works after pip install)."""
+    # Primary: templates bundled inside the package
+    d = Path(__file__).parent / "templates"
     if d.is_dir():
         return d
-    # Fallback: next to this file
-    d = Path(__file__).parent.parent.parent / "templates"
+    # Fallback: project root (dev mode / editable install)
+    d = root_dir() / "templates"
     if d.is_dir():
         return d
     raise FileNotFoundError("Cannot find templates/ directory")

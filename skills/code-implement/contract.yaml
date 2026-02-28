@@ -48,4 +48,4 @@ handoff:
     - summary
     - changed_files
     - check_results
-    - risk
+    - risks
