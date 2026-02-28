@@ -76,60 +76,43 @@ def _write_task_md(state: dict, builder_id: str, reviewer_id: str, current_role:
 
     role_emoji = {"builder": "🔧", "reviewer": "🔍"}.get(current_role, "⏳")
 
+    ws = workspace_dir()
+    inbox_path = f".multi-agent/inbox/{current_role}.md"
+    outbox_path = f".multi-agent/outbox/{current_role}.json"
+    active_id = builder_id if current_role == "builder" else reviewer_id
+    waiting_id = reviewer_id if current_role == "builder" else builder_id
+
     lines = [
-        f"# {role_emoji} TASK.md — {task_id}",
+        f"# {role_emoji} TASK.md",
         "",
-        f"> **This file is auto-generated.** Open it in any IDE to see the current task state.",
+        f"> **当前需要 `{active_id}` 执行 {current_role} 任务。**",
         "",
-        "## Current State",
+        f"## 立即行动",
         "",
-        f"| Field | Value |",
-        f"|-------|-------|",
-        f"| **Current Step** | **{current_role.upper()}** |",
-        f"| Builder (实现) | {builder_id} |",
-        f"| Reviewer (审查) | {reviewer_id} |",
-        f"| Retry | {retry_count}/{retry_budget} |",
+        f"**读取任务描述** (可以用 @file 引用):",
         "",
-        "## What to Do Now",
+        f"```",
+        f"{inbox_path}",
+        f"```",
         "",
-    ]
-
-    if current_role == "builder":
-        lines += [
-            f"**If you are `{builder_id}`** (or whichever IDE is acting as builder):",
-            "",
-            f"1. Read the prompt: `.multi-agent/inbox/builder.md`",
-            f"2. Do the implementation work described in the prompt",
-            f"3. Save your output JSON to: `.multi-agent/outbox/builder.json`",
-            f"4. Run: `ma done`",
-            "",
-            f"**If you are `{reviewer_id}`**: wait — it's not your turn yet.",
-        ]
-    elif current_role == "reviewer":
-        lines += [
-            f"**If you are `{reviewer_id}`** (or whichever IDE is acting as reviewer):",
-            "",
-            f"1. Read the prompt: `.multi-agent/inbox/reviewer.md`",
-            f"2. Review the builder's output described in the prompt",
-            f"3. Save your review JSON to: `.multi-agent/outbox/reviewer.json`",
-            f"4. Run: `ma done`",
-            "",
-            f"**If you are `{builder_id}`**: wait — it's not your turn yet.",
-        ]
-
-    lines += [
+        f"**完成后，保存结果到:**",
         "",
-        "## Requirement",
+        f"```",
+        f"{outbox_path}",
+        f"```",
         "",
-        f"> {requirement}",
+        f"> 终端会自动检测输出并推进流程，不需要手动运行任何命令。",
         "",
-        "## Quick Commands",
+        f"---",
         "",
-        "```bash",
-        "ma status    # Check current state",
-        "ma done      # Submit output and advance",
-        "ma cancel    # Cancel the task",
-        "```",
+        f"| 字段 | 值 |",
+        f"|------|----|",
+        f"| 任务 | {task_id} |",
+        f"| 需求 | {requirement} |",
+        f"| 当前步骤 | **{current_role.upper()}** |",
+        f"| Builder | {builder_id} |",
+        f"| Reviewer | {reviewer_id} |",
+        f"| 重试 | {retry_count}/{retry_budget} |",
         "",
     ]
 

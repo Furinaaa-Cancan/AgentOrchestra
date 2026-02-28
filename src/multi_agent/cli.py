@@ -47,19 +47,28 @@ def main():
 @click.option("--reviewer", default="", help="IDE for reviewer role (e.g. cursor, codex, kiro)")
 @click.option("--retry-budget", default=2, type=int, help="Max retries")
 @click.option("--timeout", default=1800, type=int, help="Timeout in seconds")
-def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer: str, retry_budget: int, timeout: int):
-    """Start a new task from a natural language requirement.
+@click.option("--no-watch", is_flag=True, default=False, help="Don't auto-watch (exit after start)")
+def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer: str, retry_budget: int, timeout: int, no_watch: bool):
+    """Start a new task and watch for IDE output.
+
+    Starts the task, then auto-watches outbox/ for agent output.
+    When the IDE AI saves its result, the orchestrator auto-advances.
+
+    Usage:
+      1. Run: ma go "your requirement"
+      2. Open .multi-agent/TASK.md in your IDE
+      3. Watch the terminal — it handles the rest
 
     Examples:
       ma go "实现 POST /users endpoint"
       ma go "Add auth middleware" --builder windsurf --reviewer cursor
-      ma go "Fix login bug" --builder kiro --reviewer codex
+      ma go "Fix login bug" --no-watch
     """
     from multi_agent.graph import compile_graph
 
     ensure_workspace()
 
-    # A2: Check for existing active task — prevent silent collision
+    # Check for existing active task
     app = compile_graph()
     existing = _detect_active_task(app)
     if existing:
@@ -70,7 +79,7 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
 
     task_id = task_id or _generate_task_id(requirement)
 
-    # A6: Clear stale inbox/outbox from previous tasks
+    # Clear stale inbox/outbox from previous tasks
     for role in ("builder", "reviewer"):
         clear_inbox(role)
         clear_outbox(role)
@@ -89,8 +98,7 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
         "conversation": [],
     }
 
-    click.echo(f"🚀 Starting task: {task_id}")
-    click.echo(f"   Skill: {skill}")
+    click.echo(f"🚀 Task: {task_id}")
     click.echo(f"   Requirement: {requirement}")
     click.echo()
 
@@ -99,19 +107,25 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
     # Run until first interrupt (plan → build interrupt)
     from langgraph.errors import GraphInterrupt
     try:
-        result = app.invoke(initial_state, config)
+        app.invoke(initial_state, config)
     except GraphInterrupt:
-        pass  # Normal — graph paused at interrupt()
+        pass
     except Exception as e:
         click.echo(f"❌ Task failed to start: {e}", err=True)
         save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
         sys.exit(1)
 
-    # Save task marker AFTER invoke succeeds (prevents stale 'active' on failure)
     save_task_yaml(task_id, {"task_id": task_id, "skill": skill, "status": "active"})
 
-    # Show next step
-    _show_snapshot(app, config)
+    # Show what to do
+    _show_waiting(app, config)
+
+    if no_watch:
+        click.echo("\n📌 Run `ma done` after the IDE finishes, or `ma watch` to auto-detect.")
+        return
+
+    # Auto-watch mode (default) — poll outbox and auto-submit
+    _run_watch_loop(app, config, task_id)
 
 
 @main.command()
@@ -282,11 +296,10 @@ def cancel(task_id: str | None, reason: str):
 def watch(task_id: str | None, interval: float):
     """Watch outbox/ for agent output and auto-submit.
 
-    Polls outbox/builder.json or outbox/reviewer.json and runs `ma done`
-    automatically when output appears. Useful for hands-free operation.
+    Resumes watching a previously started task.
+    Use this if you started with `ma go --no-watch`.
     """
     from multi_agent.graph import compile_graph
-    from multi_agent.watcher import OutboxPoller
 
     app = compile_graph()
 
@@ -297,72 +310,89 @@ def watch(task_id: str | None, interval: float):
             sys.exit(1)
 
     config = _make_config(task_id)
-    poller = OutboxPoller(poll_interval=interval)
+    _show_waiting(app, config)
+    _run_watch_loop(app, config, task_id, interval=interval)
 
-    click.echo(f"👁️  Watching outbox/ for task {task_id} (poll every {interval}s)")
-    click.echo("   Press Ctrl-C to stop.\n")
 
+def _show_waiting(app, config):
+    """Show current waiting state with clear instructions."""
+    snapshot = app.get_state(config)
+    if not snapshot or not snapshot.next:
+        vals = snapshot.values if snapshot else {}
+        status = vals.get("final_status", vals.get("error", "unknown"))
+        click.echo(f"🏁 Task finished. Status: {status}")
+        return
+
+    role = "builder"
+    agent = "?"
+    if snapshot.tasks and snapshot.tasks[0].interrupts:
+        info = snapshot.tasks[0].interrupts[0].value
+        role = info.get("role", "builder")
+        agent = info.get("agent", "?")
+
+    click.echo(f"📋 Open in your IDE:  .multi-agent/TASK.md")
+    click.echo(f"   Waiting for {role} ({agent}) to write outbox/{role}.json")
+    click.echo()
+
+
+def _run_watch_loop(app, config, task_id: str, interval: float = 2.0):
+    """Shared watch loop — polls outbox/ and auto-submits output."""
+    from multi_agent.watcher import OutboxPoller
     from langgraph.types import Command
     from langgraph.errors import GraphInterrupt
 
+    poller = OutboxPoller(poll_interval=interval)
+    start_time = time.time()
+
+    click.echo(f"👁️  Auto-watching outbox/ (Ctrl-C to stop)")
+    click.echo()
+
     try:
         while True:
+            elapsed = int(time.time() - start_time)
+            mins, secs = divmod(elapsed, 60)
+
             snapshot = app.get_state(config)
             if not snapshot or not snapshot.next:
                 vals = snapshot.values if snapshot else {}
                 final = vals.get("final_status", "")
                 if final:
                     save_task_yaml(task_id, {"task_id": task_id, "status": final})
-                click.echo(f"🏁 Task finished. Status: {vals.get('final_status', 'done')}")
-                break
+                click.echo(f"[{mins:02d}:{secs:02d}] ✅ Task finished — {final or 'done'}")
+                return
 
             # Determine which role we're waiting for
             role = "builder"
+            agent = "?"
             if snapshot.tasks and snapshot.tasks[0].interrupts:
                 info = snapshot.tasks[0].interrupts[0].value
                 role = info.get("role", "builder")
+                agent = info.get("agent", "?")
 
             for detected_role, data in poller.check_once():
                 if detected_role == role:
-                    click.echo(f"📥 Detected {role} output, auto-submitting...")
+                    click.echo(f"[{mins:02d}:{secs:02d}] 📥 {role} ({agent}) submitted! Advancing...")
                     try:
                         app.invoke(Command(resume=data), config)
                     except GraphInterrupt:
                         pass
                     except Exception as e:
-                        click.echo(f"❌ Graph error: {e}", err=True)
+                        click.echo(f"[{mins:02d}:{secs:02d}] ❌ Error: {e}", err=True)
                         save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
                         return
-                    _show_snapshot(app, config)
+
+                    # Show next waiting state
+                    next_snap = app.get_state(config)
+                    if next_snap and next_snap.next and next_snap.tasks and next_snap.tasks[0].interrupts:
+                        next_info = next_snap.tasks[0].interrupts[0].value
+                        next_role = next_info.get("role", "?")
+                        next_agent = next_info.get("agent", "?")
+                        click.echo(f"[{mins:02d}:{secs:02d}] ⏳ Now waiting for {next_role} ({next_agent})...")
                     break
 
             time.sleep(interval)
     except KeyboardInterrupt:
-        click.echo("\n⏹️  Watch stopped.")
-
-
-def _show_snapshot(app, config):
-    """Display current graph state after an invoke."""
-    snapshot = app.get_state(config)
-    if snapshot and snapshot.next:
-        node = snapshot.next[0]
-        click.echo(f"⏸️  Graph paused at: {node}")
-        if snapshot.tasks and snapshot.tasks[0].interrupts:
-            info = snapshot.tasks[0].interrupts[0].value
-            role = info.get("role", "?")
-            agent = info.get("agent", "?")
-            click.echo(f"   Role: {role}")
-            click.echo(f"   IDE:  {agent}")
-            click.echo(f"   Inbox: .multi-agent/inbox/{role}.md")
-        click.echo()
-        click.echo("📋 Next steps:")
-        click.echo("   1. Open the inbox file in your IDE (or reference via @file)")
-        click.echo("   2. Let the AI assistant work on it")
-        click.echo("   3. Run: ma done")
-    else:
-        vals = snapshot.values if snapshot else {}
-        status = vals.get("final_status", vals.get("error", "unknown"))
-        click.echo(f"🏁 Task finished. Status: {status}")
+        click.echo(f"\n⏹️  Watch stopped. Task still active — resume with: ma watch")
 
 
 def _detect_active_task(app=None) -> str | None:
