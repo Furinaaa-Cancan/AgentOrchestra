@@ -13,12 +13,27 @@ def _find_root() -> Path:
     """Walk up from CWD (or env override) looking for the project marker."""
     override = os.environ.get("MA_ROOT")
     if override:
-        return Path(override).resolve()
+        p = Path(override).resolve()
+        if not (p / "skills").is_dir() or not (p / "agents").is_dir():
+            import warnings
+            warnings.warn(
+                f"MA_ROOT={p} does not contain 'skills/' and 'agents/' directories. "
+                f"Some operations may fail.",
+                stacklevel=2,
+            )
+        return p
 
     cur = Path.cwd()
     for parent in [cur, *cur.parents]:
         if (parent / "skills").is_dir() and (parent / "agents").is_dir():
             return parent
+
+    import warnings
+    warnings.warn(
+        f"Could not find AgentOrchestra project root (no 'skills/' + 'agents/' found). "
+        f"Falling back to CWD: {cur}. Set MA_ROOT env var to fix this.",
+        stacklevel=2,
+    )
     return cur
 
 

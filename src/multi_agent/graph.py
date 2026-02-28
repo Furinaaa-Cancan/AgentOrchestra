@@ -147,17 +147,23 @@ def plan_node(state: WorkflowState) -> dict:
     contract = load_contract(skill_id)
     agents = load_agents()
 
-    # Resolve which IDE fills builder role (user choice > defaults > auto)
-    builder_id = resolve_builder(
-        agents, contract,
-        explicit=state.get("builder_explicit") or None,
-    )
+    # On retry, reuse existing role assignments to keep consistency
+    existing_builder = state.get("builder_id")
+    existing_reviewer = state.get("reviewer_id")
 
-    # Also resolve reviewer early so we can show it in dashboard
-    reviewer_id = resolve_reviewer(
-        agents, contract, builder_id,
-        explicit=state.get("reviewer_explicit") or None,
-    )
+    if existing_builder and existing_reviewer:
+        builder_id = existing_builder
+        reviewer_id = existing_reviewer
+    else:
+        # First run: resolve roles
+        builder_id = resolve_builder(
+            agents, contract,
+            explicit=state.get("builder_explicit") or None,
+        )
+        reviewer_id = resolve_reviewer(
+            agents, contract, builder_id,
+            explicit=state.get("reviewer_explicit") or None,
+        )
 
     # Build a lightweight Task for prompt rendering
     task = Task(
@@ -436,6 +442,7 @@ def build_graph() -> StateGraph:
 
 def compile_graph(*, db_path: str | None = None):
     """Compile graph with SQLite checkpointer."""
+    import atexit
     import sqlite3
     from pathlib import Path as _Path
 
@@ -446,5 +453,6 @@ def compile_graph(*, db_path: str | None = None):
     _Path(path).parent.mkdir(parents=True, exist_ok=True)
 
     conn = sqlite3.connect(path, check_same_thread=False)
+    atexit.register(conn.close)
     checkpointer = SqliteSaver(conn)
     return g.compile(checkpointer=checkpointer)

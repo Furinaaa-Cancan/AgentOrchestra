@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
-from pathlib import Path
+import time
 
 import click
 
@@ -26,7 +26,8 @@ def _make_config(task_id: str) -> dict:
 
 
 def _generate_task_id(requirement: str) -> str:
-    h = hashlib.sha256(requirement.encode()).hexdigest()[:8]
+    content = f"{requirement}-{time.time()}"
+    h = hashlib.sha256(content.encode()).hexdigest()[:8]
     return f"task-{h}"
 
 
@@ -162,6 +163,14 @@ def done(task_id: str | None, file_path: str | None):
     except GraphInterrupt:
         pass  # Normal — graph paused at next interrupt()
 
+    # Mark task completed if graph finished
+    snapshot = app.get_state(config)
+    if snapshot and not snapshot.next:
+        vals = snapshot.values or {}
+        final = vals.get("final_status", "")
+        if final:
+            save_task_yaml(task_id, {"task_id": task_id, "status": final})
+
     _show_snapshot(app, config)
 
 
@@ -280,9 +289,6 @@ def _detect_active_task(app) -> str | None:
                 return yf.stem
         except Exception:
             continue
-    # Fallback: return most recent
-    if yamls:
-        return yamls[0].stem
     return None
 
 

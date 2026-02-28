@@ -21,6 +21,8 @@ def load_contract(skill_id: str, base: Path | None = None) -> SkillContract:
 def list_skills(base: Path | None = None) -> list[str]:
     """Return available skill ids."""
     base = base or skills_dir()
+    if not base.exists():
+        return []
     return sorted(
         d.name
         for d in base.iterdir()
