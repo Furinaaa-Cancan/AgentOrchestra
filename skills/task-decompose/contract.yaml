@@ -37,4 +37,4 @@ handoff:
   required_fields:
     - summary
     - task_graph
-    - risk
+    - risks
