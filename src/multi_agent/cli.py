@@ -98,7 +98,7 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
     }
 
     click.echo(f"🚀 Task: {task_id}")
-    click.echo(f"   Requirement: {requirement}")
+    click.echo(f"   {requirement}")
     click.echo()
 
     config = _make_config(task_id)
@@ -350,7 +350,7 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0):
     poller = OutboxPoller(poll_interval=interval)
     start_time = time.time()
 
-    click.echo(f"👁️  Auto-watching outbox/ (Ctrl-C to stop)")
+    click.echo(f"👁️  等待 IDE 完成任务… (Ctrl-C 停止)")
     click.echo()
 
     try:
@@ -365,7 +365,13 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0):
                 if final:
                     save_task_yaml(task_id, {"task_id": task_id, "status": final})
                 if final in ("approved", ""):
+                    summary = vals.get("builder_output", {}).get("summary", "") if isinstance(vals.get("builder_output"), dict) else ""
+                    retries = vals.get("retry_count", 0)
                     click.echo(f"[{mins:02d}:{secs:02d}] ✅ Task finished — {final or 'done'}")
+                    if summary:
+                        click.echo(f"             {summary}")
+                    if retries:
+                        click.echo(f"             (经过 {retries} 次重试)")
                 else:
                     error = vals.get("error", "")
                     click.echo(f"[{mins:02d}:{secs:02d}] ❌ Task finished — {final}{' — ' + error if error else ''}")
@@ -381,7 +387,8 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0):
 
             for detected_role, data in poller.check_once():
                 if detected_role == role:
-                    click.echo(f"[{mins:02d}:{secs:02d}] 📥 {role} ({agent}) submitted! Advancing...")
+                    step_label = "Build" if role == "builder" else "Review"
+                    click.echo(f"[{mins:02d}:{secs:02d}] 📥 {step_label} 完成 ({agent})")
                     try:
                         app.invoke(Command(resume=data), config)
                     except GraphInterrupt:
@@ -391,12 +398,23 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0):
                         save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
                         return
 
-                    # Show next waiting state
+                    # Show next waiting state or completion
                     next_snap = app.get_state(config)
                     if next_snap and next_snap.next and next_snap.tasks and next_snap.tasks[0].interrupts:
                         next_info = next_snap.tasks[0].interrupts[0].value
                         next_role = next_info.get("role", "?")
                         next_agent = next_info.get("agent", "?")
+                        next_label = "Build" if next_role == "builder" else "Review"
+                        # Show retry feedback if this is a retry
+                        next_vals = next_snap.values or {}
+                        retry_n = next_vals.get("retry_count", 0)
+                        if retry_n > 0 and next_role == "builder":
+                            reviewer_out = next_vals.get("reviewer_output", {})
+                            feedback = reviewer_out.get("feedback", "")
+                            budget = next_vals.get("retry_budget", 2)
+                            click.echo(f"[{mins:02d}:{secs:02d}] 🔄 Reviewer 要求修改 ({retry_n}/{budget}):")
+                            if feedback:
+                                click.echo(f"             {feedback}")
                         click.echo(f"[{mins:02d}:{secs:02d}] 📋 在 {next_agent} IDE 里对 AI 说:")
                         click.echo(f'             "帮我完成 @.multi-agent/TASK.md 里的任务"')
                     break
