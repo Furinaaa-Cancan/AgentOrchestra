@@ -9,7 +9,7 @@ from typing import Annotated, Any
 from typing_extensions import TypedDict
 
 from langgraph.graph import StateGraph, START, END
-from langgraph.types import interrupt, Command
+from langgraph.types import interrupt
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from multi_agent.config import store_db_path
@@ -20,7 +20,6 @@ from multi_agent.router import load_agents, resolve_builder, resolve_reviewer
 from multi_agent.schema import (
     BuilderOutput,
     ReviewerOutput,
-    SkillContract,
     Task,
 )
 from multi_agent.workspace import (
@@ -184,8 +183,6 @@ def build_node(state: WorkflowState) -> dict:
     result = interrupt({
         "role": "builder",
         "agent": builder_id,
-        "inbox": ".multi-agent/inbox/builder.md",
-        "outbox": ".multi-agent/outbox/builder.json",
     })
 
     # A3: Timeout enforcement — check elapsed time
@@ -287,8 +284,6 @@ def review_node(state: WorkflowState) -> dict:
     result = interrupt({
         "role": "reviewer",
         "agent": reviewer_id,
-        "inbox": ".multi-agent/inbox/reviewer.md",
-        "outbox": ".multi-agent/outbox/reviewer.json",
     })
 
     # Basic validation
