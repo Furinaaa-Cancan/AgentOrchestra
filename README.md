@@ -8,7 +8,7 @@
 
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-88%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-94%20passed-brightgreen.svg)]()
 
 [English](#english) | [中文](#中文)
 
@@ -239,7 +239,7 @@ Add any tool in `agents.yaml`. No code changes needed.
 
 ```bash
 pytest tests/ -v
-# 88 tests passed
+# 94 tests passed
 ```
 
 ## License
@@ -262,25 +262,38 @@ pytest tests/ -v
 
 ## 30 秒演示
 
+**全自动模式**（CLI 工具：Claude Code, Codex, Aider）：
+
+```bash
+$ ma go "添加输入校验" --builder claude --reviewer codex
+
+🚀 Task: task-a1b2c3d4
+   添加输入校验
+
+🤖 [Build] 自动调用 claude CLI…
+[00:45] 📥 Build 完成 (claude)
+🤖 [Review] 自动调用 codex CLI…
+[01:20] 📥 Review 完成 (codex)
+[01:22] ✅ Task finished — approved
+```
+
+**半自动模式**（IDE 工具：Windsurf, Cursor）：
+
 ```bash
 $ ma go "添加输入校验" --builder windsurf --reviewer cursor
 
 🚀 Task: task-a1b2c3d4
-   Requirement: 添加输入校验
-
-📋 在 windsurf IDE 里对 AI 说:
+📋 [Build] 在 windsurf IDE 里对 AI 说:
    "帮我完成 @.multi-agent/TASK.md 里的任务"
 
-👁️  Auto-watching outbox/ (Ctrl-C to stop)
-
-[00:32] 📥 builder (windsurf) submitted! Advancing...
+[00:32] 📥 Build 完成 (windsurf)
 [00:32] 📋 在 cursor IDE 里对 AI 说:
              "帮我完成 @.multi-agent/TASK.md 里的任务"
-[01:15] 📥 reviewer (cursor) submitted! Advancing...
+[01:15] 📥 Review 完成 (cursor)
 [01:17] ✅ Task finished — approved
 ```
 
-**一个终端命令。在每个 IDE 里说一句话。终端自动推进。**
+**一个命令。** CLI 工具全自动运行，IDE 工具每步说一句话。
 
 ## 这是什么？
 
@@ -329,17 +342,22 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-### 配置 IDE
+### 配置 Agent
 
 编辑 `agents/agents.yaml`：
 
 ```yaml
 agents:
-  - id: windsurf
-    capabilities: [planning, implementation, testing, docs]
-  - id: cursor
+  # CLI 工具 — 全自动 (driver: cli)
+  - id: claude
+    driver: cli
+    command: "claude -p 'Read {task_file} ...' --allowedTools Read,Edit,Bash,Write"
     capabilities: [planning, implementation, testing, review, docs]
-  # 添加任何 IDE
+
+  # IDE 工具 — 半自动 (driver: file, 默认)
+  - id: windsurf
+    driver: file
+    capabilities: [planning, implementation, testing, docs]
 
 defaults:
   builder: windsurf
@@ -349,30 +367,34 @@ defaults:
 ### 使用
 
 ```bash
-# 一个命令 — 启动任务 + 自动监听输出
-ma go "实现 POST /users endpoint" --builder windsurf --reviewer cursor
+# 全自动 (CLI 工具)
+ma go "实现 POST /users" --builder claude --reviewer codex
 
-# 然后在每个 IDE 里说:
-# "帮我完成 @.multi-agent/TASK.md 里的任务"
+# 半自动 (IDE 工具)
+ma go "实现 POST /users" --builder windsurf --reviewer cursor
+# 然后在每个 IDE 里说: "帮我完成 @.multi-agent/TASK.md 里的任务"
 ```
-
-终端自动检测 IDE AI 的输出并推进流程。无需手动 `ma done`。
 
 ### CLI 命令
 
 | 命令 | 说明 |
 |------|------|
 | `ma go "需求"` | 启动任务 + 自动监听 |
-| `ma go "需求" --builder X --reviewer Y` | 指定 IDE |
+| `ma go "需求" --builder X --reviewer Y` | 指定工具 |
 | `ma go "需求" --no-watch` | 启动但不自动监听 |
-| `ma watch` | 恢复监听 (`--no-watch` 后) |
+| `ma watch` | 恢复监听 |
 | `ma done` | 手动提交输出 |
-| `ma status` | 查看任务状态 |
+| `ma status` | 查看任务状态（含锁/driver 模式） |
 | `ma cancel` | 取消任务 |
 
-### 支持的 IDE
+### 支持的工具
 
-任何带 AI 助手的 IDE: **Windsurf**, **Cursor**, **Codex**, **Kiro**, **Antigravity**, **Copilot**, **Aider**, **Cline**。在 `agents.yaml` 中添加任意 IDE。
+| 类型 | 工具 | 自动化程度 |
+|------|------|-----------|
+| **CLI** (driver: cli) | Claude Code, Codex, Aider, Goose | 全自动 |
+| **IDE** (driver: file) | Windsurf, Cursor, Kiro, Antigravity, Copilot | 每步一句话 |
+
+在 `agents.yaml` 中添加任意工具，无需改代码。
 
 ## 研究基础
 
@@ -390,7 +412,7 @@ ma go "实现 POST /users endpoint" --builder windsurf --reviewer cursor
 ## 测试
 
 ```bash
-pytest tests/ -v   # 88 tests passed
+pytest tests/ -v   # 94 tests passed
 ```
 
 ## 许可证

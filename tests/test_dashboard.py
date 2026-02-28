@@ -66,6 +66,23 @@ class TestGenerateDashboard:
         assert "orchestrator" in content
         assert "assigned" in content
 
+    def test_conversation_uses_event_timestamp(self):
+        """Conversation entries with 't' field should use event time, not render time."""
+        import time
+        # Use a fixed timestamp: 2024-01-01 12:30:45 UTC
+        fixed_t = 1704112245.0
+        content = generate_dashboard(
+            task_id="task-abc",
+            done_criteria=[],
+            current_agent="windsurf",
+            current_role="builder",
+            conversation=[
+                {"role": "orchestrator", "action": "assigned", "t": fixed_t},
+            ],
+        )
+        # Should contain the formatted event timestamp, not current time
+        assert "12:30:45" in content
+
     def test_fallback_role_display(self):
         """When no status_msg or error, should show role-based display."""
         content = generate_dashboard(

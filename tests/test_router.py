@@ -99,6 +99,17 @@ class TestLoadAgents:
         assert "windsurf" in ids
         assert "cursor" in ids
 
+    def test_load_yaml_parses_driver_fields(self):
+        agents = load_agents(AGENTS_YAML_PATH)
+        by_id = {a.id: a for a in agents}
+        # CLI agents should have driver="cli" and a command
+        assert by_id["claude"].driver == "cli"
+        assert "claude" in by_id["claude"].command
+        assert by_id["codex"].driver == "cli"
+        # IDE agents should have driver="file"
+        assert by_id["windsurf"].driver == "file"
+        assert by_id["windsurf"].command == ""
+
 
 class TestEligible:
     def test_all_eligible(self):

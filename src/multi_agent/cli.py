@@ -381,8 +381,10 @@ def _show_waiting(app, config):
     from multi_agent.driver import get_agent_driver, spawn_cli_agent
     drv = get_agent_driver(agent)
     if drv["driver"] == "cli" and drv["command"]:
+        vals = snapshot.values or {}
+        timeout = vals.get("timeout_sec", 600)
         click.echo(f"🤖 [{step_label}] 自动调用 {agent} CLI…")
-        spawn_cli_agent(agent, role, drv["command"])
+        spawn_cli_agent(agent, role, drv["command"], timeout_sec=timeout)
     else:
         click.echo(f"📋 [{step_label}] 在 {agent} IDE 里对 AI 说:")
         click.echo(f'   "帮我完成 @.multi-agent/TASK.md 里的任务"')
@@ -471,8 +473,9 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0):
                         from multi_agent.driver import get_agent_driver, spawn_cli_agent
                         drv = get_agent_driver(next_agent)
                         if drv["driver"] == "cli" and drv["command"]:
+                            t_sec = next_vals.get("timeout_sec", 600)
                             click.echo(f"[{mins:02d}:{secs:02d}] 🤖 自动调用 {next_agent} CLI…")
-                            spawn_cli_agent(next_agent, next_role, drv["command"])
+                            spawn_cli_agent(next_agent, next_role, drv["command"], timeout_sec=t_sec)
                         else:
                             click.echo(f"[{mins:02d}:{secs:02d}] 📋 在 {next_agent} IDE 里对 AI 说:")
                             click.echo(f'             "帮我完成 @.multi-agent/TASK.md 里的任务"')

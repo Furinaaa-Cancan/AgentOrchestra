@@ -109,3 +109,17 @@ class TestAgentProfile:
         )
         assert p.id == "windsurf"
         assert "implementation" in p.capabilities
+
+    def test_driver_defaults_to_file(self):
+        p = AgentProfile(id="windsurf")
+        assert p.driver == "file"
+        assert p.command == ""
+
+    def test_cli_driver_with_command(self):
+        p = AgentProfile(
+            id="claude",
+            driver="cli",
+            command="claude -p '{task_file}'",
+        )
+        assert p.driver == "cli"
+        assert "{task_file}" in p.command

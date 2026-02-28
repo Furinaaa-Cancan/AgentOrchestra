@@ -102,6 +102,43 @@ class TestSpawnCliAgent:
         data = json.loads(outbox_file.read_text())
         assert data["status"] == "completed"
 
+    def test_nonzero_exit_writes_error(self, tmp_path):
+        """Test that non-zero exit with no stdout produces an error in outbox."""
+        outbox_dir = tmp_path / "outbox"
+        outbox_dir.mkdir()
+
+        # Command that exits with error and no JSON output
+        cmd = "exit 1"
+
+        with patch("multi_agent.driver.workspace_dir", return_value=tmp_path), \
+             patch("multi_agent.driver.outbox_dir", return_value=outbox_dir):
+            t = driver.spawn_cli_agent("test", "builder", cmd, str(tmp_path))
+            t.join(timeout=10)
+
+        outbox_file = outbox_dir / "builder.json"
+        assert outbox_file.exists()
+        data = json.loads(outbox_file.read_text())
+        assert data["status"] == "error"
+        assert "exited with code" in data["summary"]
+
+    def test_zero_exit_no_json_writes_error(self, tmp_path):
+        """Test that zero exit with no parseable JSON still writes error."""
+        outbox_dir = tmp_path / "outbox"
+        outbox_dir.mkdir()
+
+        cmd = "echo 'not json at all'"
+
+        with patch("multi_agent.driver.workspace_dir", return_value=tmp_path), \
+             patch("multi_agent.driver.outbox_dir", return_value=outbox_dir):
+            t = driver.spawn_cli_agent("test", "builder", cmd, str(tmp_path))
+            t.join(timeout=10)
+
+        outbox_file = outbox_dir / "builder.json"
+        assert outbox_file.exists()
+        data = json.loads(outbox_file.read_text())
+        assert data["status"] == "error"
+        assert "no parseable JSON" in data["summary"]
+
     def test_timeout_writes_error(self, tmp_path):
         """Test that timeout produces an error in outbox."""
         outbox_dir = tmp_path / "outbox"

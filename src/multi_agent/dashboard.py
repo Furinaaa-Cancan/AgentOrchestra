@@ -56,7 +56,10 @@ def generate_dashboard(
     for entry in conversation:
         role = entry.get("role", "?")
         action = entry.get("action", entry.get("decision", entry.get("output", "—")))
-        lines.append(f"| {_now()} | {role} | {action} |")
+        # Use event timestamp if available, else fall back to render time
+        t = entry.get("t")
+        ts = datetime.fromtimestamp(t, tz=timezone.utc).strftime("%H:%M:%S") if t else _now()
+        lines.append(f"| {ts} | {role} | {action} |")
     lines.append("")
 
     # Actions

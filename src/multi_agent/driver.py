@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import threading
 from pathlib import Path
@@ -57,6 +58,13 @@ def spawn_cli_agent(
             outbox_path = Path(outbox_file)
             if not outbox_path.exists() and result.stdout.strip():
                 _try_extract_json(result.stdout, outbox_path)
+            # If outbox still missing after extraction attempt → report error
+            if not outbox_path.exists():
+                stderr_hint = (result.stderr or "").strip()[:200]
+                if result.returncode != 0:
+                    _write_error(outbox_file, f"{agent_id} CLI exited with code {result.returncode}: {stderr_hint}")
+                else:
+                    _write_error(outbox_file, f"{agent_id} CLI produced no parseable JSON output")
         except subprocess.TimeoutExpired:
             # Write a timeout error to outbox so the graph can handle it
             _write_error(outbox_file, f"{agent_id} CLI timed out after {timeout_sec}s")
@@ -71,8 +79,6 @@ def spawn_cli_agent(
 def _try_extract_json(text: str, outbox_path: Path) -> None:
     """Try to find and extract a JSON object from CLI output text."""
     # Look for JSON between ```json ... ``` markers
-    import re
-
     match = re.search(r"```json\s*\n(.*?)\n\s*```", text, re.DOTALL)
     if match:
         try:
