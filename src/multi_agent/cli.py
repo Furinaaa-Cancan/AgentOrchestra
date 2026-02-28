@@ -96,15 +96,19 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
 
     config = _make_config(task_id)
 
-    # Save task marker for auto-detection
-    save_task_yaml(task_id, {"task_id": task_id, "skill": skill, "status": "active"})
-
     # Run until first interrupt (plan → build interrupt)
     from langgraph.errors import GraphInterrupt
     try:
         result = app.invoke(initial_state, config)
     except GraphInterrupt:
         pass  # Normal — graph paused at interrupt()
+    except Exception as e:
+        click.echo(f"❌ Task failed to start: {e}", err=True)
+        save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
+        sys.exit(1)
+
+    # Save task marker AFTER invoke succeeds (prevents stale 'active' on failure)
+    save_task_yaml(task_id, {"task_id": task_id, "skill": skill, "status": "active"})
 
     # Show next step
     _show_snapshot(app, config)
@@ -148,8 +152,12 @@ def done(task_id: str | None, file_path: str | None):
     output_data = None
 
     if file_path:
-        with open(file_path, "r", encoding="utf-8") as f:
-            output_data = json.load(f)
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                output_data = json.load(f)
+        except json.JSONDecodeError as e:
+            click.echo(f"❌ Invalid JSON in {file_path}: {e}", err=True)
+            sys.exit(1)
     else:
         # Role-based outbox: outbox/builder.json or outbox/reviewer.json
         output_data = read_outbox(role)
@@ -176,6 +184,10 @@ def done(task_id: str | None, file_path: str | None):
         result = app.invoke(Command(resume=output_data), config)
     except GraphInterrupt:
         pass  # Normal — graph paused at next interrupt()
+    except Exception as e:
+        click.echo(f"❌ Graph error during resume: {e}", err=True)
+        save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
+        sys.exit(1)
 
     # Mark task completed if graph finished
     snapshot = app.get_state(config)
@@ -317,11 +329,14 @@ def watch(task_id: str | None, interval: float):
                         app.invoke(Command(resume=data), config)
                     except GraphInterrupt:
                         pass
+                    except Exception as e:
+                        click.echo(f"❌ Graph error: {e}", err=True)
+                        save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
+                        return
                     _show_snapshot(app, config)
                     break
 
-            import time as _time
-            _time.sleep(interval)
+            time.sleep(interval)
     except KeyboardInterrupt:
         click.echo("\n⏹️  Watch stopped.")
 

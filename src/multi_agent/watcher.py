@@ -37,13 +37,17 @@ class OutboxPoller:
         """Check for new or updated outbox files. Returns [(role, data), ...]."""
         results: list[tuple[str, dict]] = []
         for role, path in self._scan().items():
-            mtime = path.stat().st_mtime
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue  # File deleted between _scan and stat
             if role not in self._known or self._known[role] < mtime:
                 self._known[role] = mtime
                 try:
                     with path.open("r", encoding="utf-8") as f:
                         data = json.load(f)
-                    results.append((role, data))
+                    if isinstance(data, dict):
+                        results.append((role, data))
                 except (json.JSONDecodeError, OSError):
                     pass
         return results
