@@ -144,6 +144,26 @@ class TestWriteAndRead:
         assert result is not None
         assert len(result.sub_tasks) == 2
 
+    def test_read_markdown_fenced_json(self, tmp_path, monkeypatch):
+        """Agent may wrap JSON in ```json blocks — fallback should handle it."""
+        outbox = tmp_path / "outbox"
+        outbox.mkdir()
+        monkeypatch.setattr("multi_agent.decompose.outbox_dir", lambda: outbox)
+
+        fenced = '''Here is my decomposition:
+
+```json
+{
+  "sub_tasks": [{"id": "step-1", "description": "Do it"}],
+  "reasoning": "simple"
+}
+```
+'''
+        (outbox / "decompose.json").write_text(fenced)
+        result = read_decompose_result()
+        assert result is not None
+        assert result.sub_tasks[0].id == "step-1"
+
     def test_read_missing_file(self, tmp_path, monkeypatch):
         monkeypatch.setattr("multi_agent.decompose.outbox_dir", lambda: tmp_path / "nope")
         assert read_decompose_result() is None

@@ -93,12 +93,20 @@ def read_decompose_result() -> DecomposeResult | None:
         return None
 
     try:
-        data = json.loads(outbox_file.read_text(encoding="utf-8"))
-        if not isinstance(data, dict) or "sub_tasks" not in data:
-            return None
-        return DecomposeResult(**data)
-    except (json.JSONDecodeError, Exception):
+        text = outbox_file.read_text(encoding="utf-8")
+    except OSError:
         return None
+
+    # Primary: standard JSON parse
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict) and "sub_tasks" in data:
+            return DecomposeResult(**data)
+    except (json.JSONDecodeError, Exception):
+        pass
+
+    # Fallback: agent may have wrapped JSON in markdown fences
+    return parse_decompose_json(text)
 
 
 def parse_decompose_json(text: str) -> DecomposeResult | None:
