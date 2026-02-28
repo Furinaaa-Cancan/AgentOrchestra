@@ -235,6 +235,18 @@ def build_node(state: WorkflowState) -> dict:
         "outbox": ".multi-agent/outbox/builder.json",
     })
 
+    # A3: Timeout enforcement — check elapsed time
+    started = state.get("started_at", 0)
+    timeout = state.get("timeout_sec", 1800)
+    if started and timeout:
+        elapsed = time.time() - started
+        if elapsed > timeout:
+            return {
+                "error": f"TIMEOUT: builder took {int(elapsed)}s (limit: {timeout}s)",
+                "final_status": "failed",
+                "conversation": [{"role": "orchestrator", "action": "timeout", "elapsed": int(elapsed)}],
+            }
+
     # Validate builder output (light-weight)
     errors: list[str] = []
     if not isinstance(result, dict):
@@ -258,9 +270,20 @@ def build_node(state: WorkflowState) -> dict:
     except Exception:
         pass  # Lenient: proceed even if extra fields exist
 
-    # Generate reviewer prompt (role-based: reviewer.md)
+    # A4: Quality gate enforcement — check that required gates passed
     skill_id = state["skill_id"]
     contract = load_contract(skill_id)
+    check_results = result.get("check_results", {})
+    gate_warnings: list[str] = []
+    for gate in contract.quality_gates:
+        gate_result = check_results.get(gate)
+        if gate_result is None:
+            gate_warnings.append(f"quality gate '{gate}' not reported")
+        elif gate_result.lower() not in ("pass", "passed", "ok", "success"):
+            gate_warnings.append(f"quality gate '{gate}' failed: {gate_result}")
+    # Gate failures go to reviewer as extra context (not hard-fail)
+    if gate_warnings:
+        result.setdefault("gate_warnings", gate_warnings)
 
     task = Task(
         task_id=state["task_id"],

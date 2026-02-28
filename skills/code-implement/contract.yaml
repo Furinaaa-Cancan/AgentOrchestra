@@ -39,10 +39,9 @@ fallback:
   on_failure: retry
 compatibility:
   min_orchestrator_version: 0.1.0
-  supported_agents:
-    - codex
-    - windsurf
-    - antigravity
+  # supported_agents intentionally empty — any IDE can run this skill
+  # Add specific IDs here only if a skill truly requires a specific IDE
+  supported_agents: []
 handoff:
   artifact_path: artifacts/${task_id}/
   required_fields:

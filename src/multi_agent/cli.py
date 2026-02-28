@@ -1,4 +1,4 @@
-"""CLI entry point — ma go / ma done / ma status / ma cancel."""
+"""CLI entry point — ma go / ma done / ma status / ma cancel / ma watch."""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ import click
 
 from multi_agent.config import store_db_path, workspace_dir
 from multi_agent.workspace import (
+    clear_inbox,
+    clear_outbox,
     ensure_workspace,
     read_outbox,
     save_task_yaml,
@@ -57,7 +59,21 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
 
     ensure_workspace()
 
+    # A2: Check for existing active task — prevent silent collision
+    app = compile_graph()
+    existing = _detect_active_task(app)
+    if existing:
+        click.echo(f"⚠️  Task '{existing}' is still active.", err=True)
+        click.echo(f"   Run `ma done` to finish it, or `ma cancel` to abort.", err=True)
+        if not click.confirm("Start a new task anyway? (will NOT cancel the old one)"):
+            sys.exit(1)
+
     task_id = task_id or _generate_task_id(requirement)
+
+    # A6: Clear stale inbox/outbox from previous tasks
+    for role in ("builder", "reviewer"):
+        clear_inbox(role)
+        clear_outbox(role)
 
     initial_state = {
         "task_id": task_id,
@@ -79,7 +95,6 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
     click.echo(f"   Requirement: {requirement}")
     click.echo()
 
-    app = compile_graph()
     config = _make_config(task_id)
 
     # Save task marker for auto-detection
@@ -248,6 +263,68 @@ def cancel(task_id: str | None, reason: str):
         error=f"已取消: {reason}",
     )
     click.echo(f"🛑 Task {task_id} marked as cancelled: {reason}")
+
+
+@main.command()
+@click.option("--task-id", default=None)
+@click.option("--interval", default=2.0, type=float, help="Poll interval in seconds")
+def watch(task_id: str | None, interval: float):
+    """Watch outbox/ for agent output and auto-submit.
+
+    Polls outbox/builder.json or outbox/reviewer.json and runs `ma done`
+    automatically when output appears. Useful for hands-free operation.
+    """
+    from multi_agent.graph import compile_graph
+    from multi_agent.watcher import OutboxPoller
+
+    app = compile_graph()
+
+    if not task_id:
+        task_id = _detect_active_task(app)
+        if not task_id:
+            click.echo("❌ No active task to watch.", err=True)
+            sys.exit(1)
+
+    config = _make_config(task_id)
+    poller = OutboxPoller(poll_interval=interval)
+
+    click.echo(f"👁️  Watching outbox/ for task {task_id} (poll every {interval}s)")
+    click.echo("   Press Ctrl-C to stop.\n")
+
+    from langgraph.types import Command
+    from langgraph.errors import GraphInterrupt
+
+    try:
+        while True:
+            snapshot = app.get_state(config)
+            if not snapshot or not snapshot.next:
+                vals = snapshot.values if snapshot else {}
+                final = vals.get("final_status", "")
+                if final:
+                    save_task_yaml(task_id, {"task_id": task_id, "status": final})
+                click.echo(f"🏁 Task finished. Status: {vals.get('final_status', 'done')}")
+                break
+
+            # Determine which role we're waiting for
+            role = "builder"
+            if snapshot.tasks and snapshot.tasks[0].interrupts:
+                info = snapshot.tasks[0].interrupts[0].value
+                role = info.get("role", "builder")
+
+            for detected_role, data in poller.check_once():
+                if detected_role == role:
+                    click.echo(f"📥 Detected {role} output, auto-submitting...")
+                    try:
+                        app.invoke(Command(resume=data), config)
+                    except GraphInterrupt:
+                        pass
+                    _show_snapshot(app, config)
+                    break
+
+            import time as _time
+            _time.sleep(interval)
+    except KeyboardInterrupt:
+        click.echo("\n⏹️  Watch stopped.")
 
 
 def _show_snapshot(app, config):

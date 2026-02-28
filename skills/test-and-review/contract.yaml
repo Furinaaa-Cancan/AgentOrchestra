@@ -37,10 +37,7 @@ fallback:
   on_failure: escalate_to_reviewer
 compatibility:
   min_orchestrator_version: 0.1.0
-  supported_agents:
-    - codex
-    - windsurf
-    - antigravity
+  supported_agents: []
 handoff:
   artifact_path: artifacts/${task_id}/
   required_fields:
