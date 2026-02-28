@@ -3,27 +3,48 @@
 # Map your IDE tools to roles. You can use ANY IDE here.
 # The system only cares about roles (builder, reviewer), not IDE names.
 #
-# Examples:
-#   - windsurf, cursor, kiro, codex, antigravity, copilot, aider, cline, ...
+# driver: how to invoke the agent
+#   "file"  — write TASK.md, user manually tells IDE (default)
+#   "cli"   — spawn CLI tool automatically (fully automated)
 #
-# To add a new IDE, just add it here. No code changes needed.
+# command: CLI command template (only for driver: cli)
+#   Use {task_file} as placeholder for TASK.md path
+#   Use {outbox_file} as placeholder for outbox JSON path
+#
+# To add a new IDE/tool, just add it here. No code changes needed.
 
 version: 2
 
 agents:
   - id: windsurf
+    driver: file
     capabilities: [planning, implementation, testing, docs]
     
   - id: cursor
+    driver: file
     capabilities: [planning, implementation, testing, review, docs]
     
+  - id: claude
+    driver: cli
+    command: "claude -p 'Read {task_file} and complete the task. Save the JSON output to {outbox_file}' --allowedTools Read,Edit,Bash,Write --output-format text"
+    capabilities: [planning, implementation, testing, review, docs, security]
+
   - id: codex
+    driver: cli
+    command: "codex exec 'Read {task_file} and complete the task. Save the JSON output to {outbox_file}' --full-auto"
     capabilities: [planning, implementation, testing, review, docs]
 
+  - id: aider
+    driver: cli
+    command: "aider --message 'Read {task_file} and complete the task. Save the JSON output to {outbox_file}' --yes"
+    capabilities: [planning, implementation, testing, review]
+
   - id: antigravity
+    driver: file
     capabilities: [planning, implementation, review, security]
 
   - id: kiro
+    driver: file
     capabilities: [planning, implementation, testing, review]
 
 # Role assignment strategy:

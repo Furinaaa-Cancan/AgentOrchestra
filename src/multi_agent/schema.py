@@ -198,6 +198,8 @@ class ReviewerOutput(BaseModel):
 
 class AgentProfile(BaseModel):
     id: str
+    driver: str = "file"  # "file" (IDE, manual) or "cli" (auto-spawn)
+    command: str = ""      # CLI command template (for driver="cli")
     capabilities: list[str] = Field(default_factory=list)
     reliability: float = 0.9
     queue_health: float = 0.9

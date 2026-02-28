@@ -349,7 +349,7 @@ def watch(task_id: str | None, interval: float):
 
 
 def _show_waiting(app, config):
-    """Show current waiting state with clear instructions."""
+    """Show current waiting state — auto-spawn CLI agents or show manual instructions."""
     snapshot = app.get_state(config)
     if not snapshot or not snapshot.next:
         vals = snapshot.values if snapshot else {}
@@ -369,8 +369,16 @@ def _show_waiting(app, config):
         agent = info.get("agent", "?")
 
     step_label = "Build" if role == "builder" else "Review"
-    click.echo(f"📋 [{step_label}] 在 {agent} IDE 里对 AI 说:")
-    click.echo(f'   "帮我完成 @.multi-agent/TASK.md 里的任务"')
+
+    # Check if agent has CLI driver → auto-spawn
+    from multi_agent.driver import get_agent_driver, spawn_cli_agent
+    drv = get_agent_driver(agent)
+    if drv["driver"] == "cli" and drv["command"]:
+        click.echo(f"🤖 [{step_label}] 自动调用 {agent} CLI…")
+        spawn_cli_agent(agent, role, drv["command"])
+    else:
+        click.echo(f"📋 [{step_label}] 在 {agent} IDE 里对 AI 说:")
+        click.echo(f'   "帮我完成 @.multi-agent/TASK.md 里的任务"')
     click.echo()
 
 
@@ -452,8 +460,15 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0):
                             click.echo(f"[{mins:02d}:{secs:02d}] 🔄 Reviewer 要求修改 ({retry_n}/{budget}):")
                             if feedback:
                                 click.echo(f"             {feedback}")
-                        click.echo(f"[{mins:02d}:{secs:02d}] 📋 在 {next_agent} IDE 里对 AI 说:")
-                        click.echo(f'             "帮我完成 @.multi-agent/TASK.md 里的任务"')
+                        # Auto-spawn CLI agent or show manual instructions
+                        from multi_agent.driver import get_agent_driver, spawn_cli_agent
+                        drv = get_agent_driver(next_agent)
+                        if drv["driver"] == "cli" and drv["command"]:
+                            click.echo(f"[{mins:02d}:{secs:02d}] 🤖 自动调用 {next_agent} CLI…")
+                            spawn_cli_agent(next_agent, next_role, drv["command"])
+                        else:
+                            click.echo(f"[{mins:02d}:{secs:02d}] 📋 在 {next_agent} IDE 里对 AI 说:")
+                            click.echo(f'             "帮我完成 @.multi-agent/TASK.md 里的任务"')
                     break
 
             time.sleep(interval)
