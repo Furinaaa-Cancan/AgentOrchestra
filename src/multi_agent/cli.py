@@ -34,7 +34,7 @@ def _generate_task_id(requirement: str) -> str:
 
 @click.group()
 def main():
-    """ma — Multi-Agent orchestration CLI."""
+    """ma — Multi-Agent 协作 CLI. 一条命令协调多个 IDE AI."""
     pass
 
 
@@ -142,10 +142,10 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
 @click.option("--task-id", default=None, help="Task ID (auto-detect if only one active)")
 @click.option("--file", "file_path", default=None, type=click.Path(exists=True), help="Read output from file")
 def done(task_id: str | None, file_path: str | None):
-    """Submit agent output and advance the graph.
+    """手动提交 IDE 输出并推进任务.
 
-    Reads from outbox/builder.json or outbox/reviewer.json (role-based),
-    or from --file, or from stdin.
+    自动从 .multi-agent/outbox/ 读取当前角色的 JSON 输出,
+    也可用 --file 指定文件, 或从 stdin 粘贴.
     """
     from multi_agent.graph import compile_graph
 
@@ -301,10 +301,10 @@ def cancel(task_id: str | None, reason: str):
 @click.option("--task-id", default=None)
 @click.option("--interval", default=2.0, type=float, help="Poll interval in seconds")
 def watch(task_id: str | None, interval: float):
-    """Watch outbox/ for agent output and auto-submit.
+    """自动检测 IDE 输出并推进任务.
 
-    Resumes watching a previously started task.
-    Use this if you started with `ma go --no-watch`.
+    恢复之前中断的自动检测.
+    适用于 `ma go --no-watch` 启动的任务.
     """
     from multi_agent.graph import compile_graph
 
