@@ -57,12 +57,20 @@
 - **request_changes**: 存在小问题，修改后可通过
 - **reject**: 严重问题，需要重新实现
 
+## 审查流程 (先分析，再决策)
+1. **逐文件阅读** builder 修改的每个文件
+2. **逐条核对** 完成标准是否满足
+3. **独立运行** 测试和 lint 验证
+4. **列出发现** 所有问题和优点
+5. **做出决策** 基于以上分析
+
 ## 产出要求
 完成审查后，请输出以下 JSON:
 
 ```json
 {
   "decision": "approve 或 reject 或 request_changes",
+  "reasoning": "基于检查清单的逐条分析过程",
   "summary": "审查结论",
   "issues": ["问题1", "问题2"],
   "feedback": "给 builder 的详细修改建议（如果 reject/request_changes）"

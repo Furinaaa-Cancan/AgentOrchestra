@@ -237,9 +237,14 @@ class TestAgentHealthCheck:
         from multi_agent.router import check_agent_health
         agents = [AgentProfile(id="ws", capabilities=["implementation"], reliability=0.9)]
         results = check_agent_health(agents)
-        assert len(results) == 1
-        assert results[0]["status"] == "healthy"
-        assert results[0]["issues"] == []
+        agent_results = [r for r in results if r["id"] != "_system"]
+        assert len(agent_results) == 1
+        assert agent_results[0]["status"] == "healthy"
+        assert agent_results[0]["issues"] == []
+        # Single-agent setup triggers cross-model diversity warning
+        system_results = [r for r in results if r["id"] == "_system"]
+        assert len(system_results) == 1
+        assert system_results[0]["status"] == "warning"
 
     def test_low_reliability_degraded(self):
         from multi_agent.router import check_agent_health

@@ -175,6 +175,8 @@ def check_agent_health(agents: list[AgentProfile]) -> list[dict]:
     """Check health of all registered agents.
 
     Returns list of {id, status, issues} for each agent.
+    Also warns about cross-model diversity for adversarial review effectiveness
+    (literature: Brilliant 2026, correlated error theory).
     """
     results: list[dict] = []
     for agent in agents:
@@ -189,6 +191,17 @@ def check_agent_health(agents: list[AgentProfile]) -> list[dict]:
             issues.append("no capabilities defined")
         status = "healthy" if not issues else "degraded"
         results.append({"id": agent.id, "status": status, "issues": issues})
+    # Cross-model diversity check (Brilliant 2026: correlated error risk)
+    if len(agents) < 2:
+        results.append({
+            "id": "_system",
+            "status": "warning",
+            "issues": [
+                "Only 1 agent configured. Cross-model adversarial review "
+                "requires ≥2 agents backed by different LLMs to reduce "
+                "correlated errors (Brilliant 2026)."
+            ],
+        })
     return results
 
 
