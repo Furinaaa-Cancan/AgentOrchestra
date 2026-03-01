@@ -282,6 +282,16 @@ class TestDuplicateSubTaskId:
         errors = validate_decompose_result(dr)
         assert any("duplicate" in e.lower() for e in errors)
 
+    def test_agent_profile_rejects_path_traversal_id(self):
+        from multi_agent.schema import AgentProfile
+        import pytest as _pt
+        for bad_id in ["../etc/passwd", "/root", "a;rm -rf", "", " "]:
+            with _pt.raises(Exception):
+                AgentProfile(id=bad_id, capabilities=[])
+        # Valid IDs accepted
+        AgentProfile(id="windsurf", capabilities=[])
+        AgentProfile(id="codex-cli", capabilities=[])
+
     def test_validate_detects_circular_deps(self):
         from multi_agent.decompose import validate_decompose_result
         from multi_agent.schema import DecomposeResult, SubTask

@@ -810,6 +810,7 @@ def cancel(task_id: str | None, reason: str):
             if not task_id:
                 click.echo("No active task to cancel.")
                 return
+            _validate_task_id(task_id)
             click.echo(f"⚠️  发现孤立锁 (task: {task_id}), 正在清理…")
 
     # Mark task YAML as cancelled so auto-detect skips it
@@ -1366,7 +1367,10 @@ def _detect_active_task(app=None) -> str | None:
             import yaml
             data = yaml.safe_load(yf.read_text(encoding="utf-8")) or {}
             if data.get("status") == "active":
-                return yf.stem
+                tid = yf.stem
+                if not _SAFE_TASK_ID_RE.match(tid):
+                    continue  # skip malicious filenames
+                return tid
         except Exception:
             continue
     return None

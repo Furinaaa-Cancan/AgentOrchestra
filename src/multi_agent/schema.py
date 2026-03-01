@@ -231,7 +231,7 @@ class DecomposeResult(BaseModel):
 # ── Agent Profile ─────────────────────────────────────────
 
 class AgentProfile(BaseModel):
-    id: str
+    id: str = Field(..., pattern=r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
     driver: str = "file"  # "file" (IDE, manual) or "cli" (auto-spawn)
     command: str = ""      # CLI command template (for driver="cli")
     capabilities: list[str] = Field(default_factory=list)
