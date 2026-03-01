@@ -10,7 +10,10 @@ Works with ANY IDE: Windsurf, Cursor, Codex, Kiro, Antigravity, Copilot, Aider, 
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 from multi_agent.config import agents_profile_path, load_yaml, root_dir
 from multi_agent.schema import AgentProfile, SkillContract
@@ -63,8 +66,9 @@ def load_agents(path: Path | None = None) -> list[AgentProfile]:
                 cost=a.get("cost", 0.5),
             )
             result.append(profile)
-        except Exception:
-            continue  # skip entries that fail validation
+        except Exception as exc:
+            _log.warning("Skipping malformed agent entry %r: %s", a.get("id", a), exc)
+            continue
     return result
 
 
@@ -93,6 +97,12 @@ def resolve_builder(
     Returns agent ID string (not AgentProfile — we don't need metadata for role-based flow).
     """
     if explicit:
+        known_ids = {a.id for a in agents}
+        if known_ids and explicit not in known_ids:
+            _log.warning(
+                "Explicit builder '%s' not in registry %s — task may hang if agent unavailable.",
+                explicit, sorted(known_ids),
+            )
         return explicit
 
     defaults = get_defaults()
@@ -106,6 +116,11 @@ def resolve_builder(
 
     # Last resort: any agent (bypasses health filter)
     if agents:
+        _log.warning(
+            "No healthy agent with 'implementation' capability — falling back to '%s' "
+            "(health/capability filters bypassed).",
+            agents[0].id,
+        )
         return agents[0].id
     raise ValueError("No agent configured for builder role")
 
@@ -126,6 +141,12 @@ def resolve_reviewer(
                 f"Reviewer cannot be the same as builder ({builder_id}). "
                 f"Cross-model adversarial review requires different IDEs."
             )
+        known_ids = {a.id for a in agents}
+        if known_ids and explicit not in known_ids:
+            _log.warning(
+                "Explicit reviewer '%s' not in registry %s — task may hang if agent unavailable.",
+                explicit, sorted(known_ids),
+            )
         return explicit
 
     defaults = get_defaults()
@@ -141,6 +162,11 @@ def resolve_reviewer(
     # Last resort: any agent that isn't the builder
     others = [a for a in agents if a.id != builder_id]
     if others:
+        _log.warning(
+            "No healthy agent with 'review' capability — falling back to '%s' "
+            "(health/capability filters bypassed).",
+            others[0].id,
+        )
         return others[0].id
 
     raise ValueError(

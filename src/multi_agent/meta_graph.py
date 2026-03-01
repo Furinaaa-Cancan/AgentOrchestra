@@ -11,9 +11,12 @@ the existing 4-node LangGraph workflow. The meta-graph coordinates:
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Any
 
 from multi_agent.schema import SubTask
+
+_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,63}$")
 
 
 def generate_sub_task_id(parent_task_id: str, sub_id: str) -> str:
@@ -22,10 +25,6 @@ def generate_sub_task_id(parent_task_id: str, sub_id: str) -> str:
     Format: task-{parent_short}-{sub_id_cleaned}
     Falls back to hash-based ID if the result doesn't match _ID_RE.
     """
-    import re
-
-    _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,63}$")
-
     # Extract short parent name: remove "task-" prefix, take last segment
     parent_short = parent_task_id.removeprefix("task-")
     # Keep only first 12 chars of parent

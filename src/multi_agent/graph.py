@@ -714,10 +714,10 @@ def _review_node_inner(state: WorkflowState) -> dict:
         total_elapsed = time.time() - task_started
         if total_elapsed > MAX_TASK_DURATION_SEC:
             return {
-                "reviewer_output": {"decision": "reject",
-                                    "feedback": (f"TOTAL_TIMEOUT: task running {int(total_elapsed)}s "
-                                                 f"exceeds limit (node=review, "
-                                                 f"agent={state.get('reviewer_id', '?')})")},
+                "error": (f"TOTAL_TIMEOUT: task running {int(total_elapsed)}s exceeds "
+                          f"{MAX_TASK_DURATION_SEC}s limit (node=review, "
+                          f"agent={state.get('reviewer_id', '?')})"),
+                "final_status": "failed",
                 "conversation": [{"role": "orchestrator", "action": "total_timeout",
                                   "node": "review", "elapsed": int(total_elapsed),
                                   "t": time.time()}],
@@ -848,6 +848,20 @@ def decide_node(state: WorkflowState) -> dict:
 
 def _decide_node_inner(state: WorkflowState) -> dict:
     graph_hooks.fire_enter("decide", state)
+
+    # Early exit if state is already terminal (e.g., review_node detected cancellation
+    # or TOTAL_TIMEOUT). Without this, decide processes stale reviewer_output.
+    fs = state.get("final_status")
+    if fs and fs not in ("approved",):
+        passthrough = {
+            "final_status": fs,
+            "conversation": [{"role": "orchestrator", "action": "terminal_passthrough",
+                              "original_status": fs, "t": time.time()}],
+        }
+        if state.get("error"):
+            passthrough["error"] = state["error"]
+        graph_hooks.fire_exit("decide", state, passthrough)
+        return passthrough
 
     # Task 74: trim conversation if oversized
     convo = state.get("conversation", [])
@@ -1025,7 +1039,8 @@ def _route_after_build(state: WorkflowState) -> str:
 def route_decision(state: WorkflowState) -> str:
     if state.get("error"):
         return "end"
-    if state.get("final_status") == "approved":
+    fs = state.get("final_status")
+    if fs in ("approved", "failed", "cancelled", "escalated"):
         return "end"
     return "retry"
 

@@ -1453,6 +1453,121 @@ class TestTrimConversationEdgeCases:
         assert marker["key_feedback"] == []
 
 
+class TestRouteDecisionTerminalStates:
+    """R12: route_decision must route to 'end' for ALL terminal states,
+    not just 'approved'. Previously, cancelled/failed/escalated states
+    fell through to 'retry', causing cancelled tasks to keep running."""
+
+    def test_cancelled_goes_to_end(self):
+        state = {"final_status": "cancelled"}
+        assert route_decision(state) == "end"
+
+    def test_failed_goes_to_end(self):
+        state = {"final_status": "failed"}
+        assert route_decision(state) == "end"
+
+    def test_escalated_goes_to_end(self):
+        state = {"final_status": "escalated"}
+        assert route_decision(state) == "end"
+
+    def test_approved_goes_to_end(self):
+        state = {"final_status": "approved"}
+        assert route_decision(state) == "end"
+
+    def test_no_final_status_retries(self):
+        state = {"reviewer_output": {"decision": "reject"}}
+        assert route_decision(state) == "retry"
+
+
+class TestReviewNodeTotalTimeout:
+    """R12: review_node TOTAL_TIMEOUT must set error + final_status='failed',
+    not just a reviewer_output reject. Previously, the 2h safety limit was
+    bypassed because decide_node treated TOTAL_TIMEOUT as a normal reject."""
+
+    @patch("multi_agent.graph.interrupt")
+    def test_total_timeout_sets_error_and_failed(self, mock_interrupt):
+        import time as _time
+        mock_interrupt.return_value = {"decision": "approve", "feedback": "ok"}
+        state = {
+            "reviewer_id": "cursor",
+            "task_started_at": _time.time() - MAX_TASK_DURATION_SEC - 100,
+            "started_at": _time.time(),
+            "timeout_sec": 1800,
+            "conversation": [],
+        }
+        result = review_node(state)
+        assert result["final_status"] == "failed"
+        assert "TOTAL_TIMEOUT" in result["error"]
+        # Should NOT have reviewer_output (interrupt never called)
+        assert "reviewer_output" not in result
+
+    @patch("multi_agent.graph.interrupt")
+    def test_total_timeout_does_not_call_interrupt(self, mock_interrupt):
+        """TOTAL_TIMEOUT should return before reaching interrupt()."""
+        import time as _time
+        state = {
+            "reviewer_id": "cursor",
+            "task_started_at": _time.time() - MAX_TASK_DURATION_SEC - 1,
+            "conversation": [],
+        }
+        review_node(state)
+        mock_interrupt.assert_not_called()
+
+
+class TestDecideNodeTerminalPassthrough:
+    """R12: decide_node must early-exit if state already has a terminal
+    final_status (e.g., review_node returned 'cancelled'). Previously,
+    decide processed stale reviewer_output from a prior round."""
+
+    @patch("multi_agent.graph.write_dashboard")
+    def test_cancelled_state_passes_through(self, mock_dash):
+        state = {
+            "task_id": "task-pt-01", "skill_id": "code-implement",
+            "done_criteria": ["test"], "retry_count": 0, "retry_budget": 2,
+            "builder_id": "windsurf", "reviewer_id": "cursor",
+            "conversation": [],
+            "final_status": "cancelled",
+        }
+        result = decide_node(state)
+        assert result["final_status"] == "cancelled"
+        assert result["conversation"][0]["action"] == "terminal_passthrough"
+        # Should NOT have retry_count (no retry logic executed)
+        assert "retry_count" not in result
+        # Dashboard should NOT be called (no state change)
+        mock_dash.assert_not_called()
+
+    @patch("multi_agent.graph.write_dashboard")
+    def test_failed_state_passes_through_with_error(self, mock_dash):
+        state = {
+            "task_id": "task-pt-02", "skill_id": "code-implement",
+            "done_criteria": ["test"], "retry_count": 0, "retry_budget": 2,
+            "builder_id": "windsurf", "reviewer_id": "cursor",
+            "conversation": [],
+            "final_status": "failed",
+            "error": "TOTAL_TIMEOUT: exceeded 7200s",
+        }
+        result = decide_node(state)
+        assert result["final_status"] == "failed"
+        assert result["error"] == "TOTAL_TIMEOUT: exceeded 7200s"
+
+    @patch("multi_agent.graph.archive_conversation")
+    @patch("multi_agent.graph.write_dashboard")
+    def test_approved_state_not_passthrough(self, mock_dash, mock_archive):
+        """approved final_status should NOT trigger early exit — let normal
+        approve logic run (which archives conversation, etc.)."""
+        state = {
+            "task_id": "task-pt-03", "skill_id": "code-implement",
+            "done_criteria": ["test"], "retry_count": 0, "retry_budget": 2,
+            "builder_id": "windsurf", "reviewer_id": "cursor",
+            "conversation": [],
+            "reviewer_output": {"decision": "approve", "summary": "LGTM"},
+        }
+        result = decide_node(state)
+        assert result["final_status"] == "approved"
+        # Normal approve path should archive conversation
+        mock_archive.assert_called_once()
+
+
 class TestDoWConstants:
     def test_max_task_duration_is_positive(self):
         assert MAX_TASK_DURATION_SEC > 0

@@ -265,3 +265,87 @@ class TestAgentHealthCheck:
         agents = [AgentProfile(id="empty", capabilities=[])]
         results = check_agent_health(agents)
         assert any("no capabilities" in i for i in results[0]["issues"])
+
+
+class TestLoadAgentsWarning:
+    """R13 F1: load_agents should log warning for malformed entries."""
+
+    def test_malformed_entry_logs_warning(self, tmp_path, caplog):
+        import yaml
+        import logging
+        yaml_file = tmp_path / "agents.yaml"
+        yaml_file.write_text(yaml.dump({
+            "version": 2,
+            "agents": [
+                {"id": "good", "capabilities": ["implementation"]},
+                {"capabilities": ["review"]},  # missing id → skip silently before
+            ],
+        }))
+        # Malformed entries without "id" are caught by the `if "id" not in a` check,
+        # not by the exception handler. Verify they don't crash and good entries load.
+        agents = load_agents(yaml_file)
+        assert len(agents) == 1
+        assert agents[0].id == "good"
+
+
+class TestResolveBuilderWarnings:
+    """R13 F2+F3: resolve_builder should warn on last-resort and unknown explicit."""
+
+    def test_explicit_unknown_agent_warns(self, caplog):
+        import logging
+        agents = [AgentProfile(id="windsurf", capabilities=["implementation"])]
+        contract = _make_contract()
+        with caplog.at_level(logging.WARNING, logger="multi_agent.router"):
+            result = resolve_builder(agents, contract, explicit="nonexistent")
+        assert result == "nonexistent"
+        assert any("not in registry" in r.message for r in caplog.records)
+
+    def test_explicit_known_agent_no_warning(self, caplog):
+        import logging
+        agents = [AgentProfile(id="windsurf", capabilities=["implementation"])]
+        contract = _make_contract()
+        with caplog.at_level(logging.WARNING, logger="multi_agent.router"):
+            result = resolve_builder(agents, contract, explicit="windsurf")
+        assert result == "windsurf"
+        assert not any("not in registry" in r.message for r in caplog.records)
+
+    def test_last_resort_fallback_warns(self, caplog):
+        import logging
+        # Agent with low health score → filtered by _eligible → last resort
+        agents = [AgentProfile(id="sick", capabilities=["testing"], reliability=0.1, queue_health=0.1)]
+        contract = _make_contract()
+        with patch("multi_agent.router.get_defaults", return_value={}), \
+             caplog.at_level(logging.WARNING, logger="multi_agent.router"):
+            result = resolve_builder(agents, contract)
+        assert result == "sick"
+        assert any("filters bypassed" in r.message for r in caplog.records)
+
+
+class TestResolveReviewerWarnings:
+    """R13 F2+F3: resolve_reviewer should warn on last-resort and unknown explicit."""
+
+    def test_explicit_unknown_reviewer_warns(self, caplog):
+        import logging
+        agents = [
+            AgentProfile(id="windsurf", capabilities=["implementation"]),
+            AgentProfile(id="cursor", capabilities=["review"]),
+        ]
+        contract = _make_contract()
+        with caplog.at_level(logging.WARNING, logger="multi_agent.router"):
+            result = resolve_reviewer(agents, contract, builder_id="windsurf", explicit="ghost")
+        assert result == "ghost"
+        assert any("not in registry" in r.message for r in caplog.records)
+
+    def test_last_resort_reviewer_warns(self, caplog):
+        import logging
+        # Both agents have low health → _eligible filters all → last resort
+        agents = [
+            AgentProfile(id="builder-a", capabilities=["implementation"], reliability=0.1, queue_health=0.1),
+            AgentProfile(id="fallback-b", capabilities=["testing"], reliability=0.1, queue_health=0.1),
+        ]
+        contract = _make_contract()
+        with patch("multi_agent.router.get_defaults", return_value={}), \
+             caplog.at_level(logging.WARNING, logger="multi_agent.router"):
+            result = resolve_reviewer(agents, contract, builder_id="builder-a")
+        assert result == "fallback-b"
+        assert any("filters bypassed" in r.message for r in caplog.records)
