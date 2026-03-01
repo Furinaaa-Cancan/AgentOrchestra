@@ -145,6 +145,12 @@ def log_timing(task_id: str, node: str, start: float, end: float) -> None:
 def trim_conversation(conversation: list[dict]) -> list[dict]:
     """Keep conversation within MAX_CONVERSATION_SIZE, preserving first and last entries.
 
+    NOTE: This trims a *local copy* used for prompt rendering, dashboard display,
+    and history archiving. The LangGraph internal state (Annotated[list, add])
+    accumulates all entries and is NOT trimmed by this function. For long-running
+    tasks, this distinction matters: prompts stay bounded, but the checkpoint DB
+    may grow large (Context Rot — Chroma/Hong et al. 2025).
+
     Includes a lightweight summary of removed entries so downstream AI agents
     retain context awareness (literature: JetBrains context management research).
     """
@@ -626,6 +632,17 @@ def _build_node_inner(state: WorkflowState) -> dict:
     except Exception:
         pass  # Lenient: proceed even if extra fields exist
 
+    # C3: Semantic validation — completed with no changed_files is suspicious
+    # (MAST NeurIPS 2025 TV: task verification must be independent of claim)
+    builder_status = str(result.get("status", "")).lower()
+    changed_files = result.get("changed_files", [])
+    if builder_status in ("completed", "success", "done") and not changed_files:
+        _log.warning(
+            "Builder claims '%s' but reported no changed_files — "
+            "forwarding to reviewer with warning.", builder_status,
+        )
+        result.setdefault("_empty_changeset_warning", True)
+
     # A4: Quality gate enforcement — check that required gates passed
     skill_id = state["skill_id"]
     contract = load_contract(skill_id)
@@ -900,8 +917,26 @@ def _decide_node_inner(state: WorkflowState) -> dict:
         graph_stats.record_retry_outcome(review_round, decision)
 
     if decision == "approve":
+        # C1: Check rubber-stamp warning from review_node (MAST NeurIPS 2025 TV-1).
+        # If reviewer approved without substantive reasoning, record audit trail.
+        convo_entries: list[dict] = []
+        if reviewer_output.get("_rubber_stamp_warning"):
+            _log.warning(
+                "Task %s approved with rubber-stamp warning — review may lack "
+                "independent verification (MAST TV-1). Approving with audit note.",
+                state.get("task_id", "?"),
+            )
+            convo_entries.append({
+                "role": "orchestrator", "action": "rubber_stamp_warning",
+                "details": "Reviewer approved without substantive reasoning. "
+                           "Approval accepted but flagged for audit.",
+                "reviewer_id": state.get("reviewer_id", "?"),
+                "t": time.time(),
+            })
+
         final_entry = {"role": "orchestrator", "action": "approved", "t": time.time()}
-        full_convo = state.get("conversation", []) + [final_entry]
+        convo_entries.append(final_entry)
+        full_convo = state.get("conversation", []) + convo_entries
         write_dashboard(
             task_id=state["task_id"],
             done_criteria=state.get("done_criteria", []),
@@ -913,7 +948,7 @@ def _decide_node_inner(state: WorkflowState) -> dict:
         archive_conversation(state["task_id"], full_convo)
         approve_result = {
             "final_status": "approved",
-            "conversation": [final_entry],
+            "conversation": convo_entries,
         }
         graph_hooks.fire_exit("decide", state, approve_result)
         return approve_result

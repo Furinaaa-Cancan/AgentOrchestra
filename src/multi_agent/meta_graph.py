@@ -11,10 +11,59 @@ the existing 4-node LangGraph workflow. The meta-graph coordinates:
 from __future__ import annotations
 
 import hashlib
+import json
+import logging
 import re
+from pathlib import Path
 from typing import Any
 
 from multi_agent.schema import SubTask
+
+_log = logging.getLogger(__name__)
+
+
+def save_checkpoint(parent_task_id: str, prior_results: list[dict],
+                    completed_ids: list[str]) -> Path:
+    """Persist decompose progress to disk for crash recovery (MAS-FIRE 2026).
+
+    Saves after each sub-task completion so progress is never lost.
+    """
+    from multi_agent.config import workspace_dir
+    ckpt_dir = workspace_dir() / "checkpoints"
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    ckpt_path = ckpt_dir / f"decompose-{parent_task_id}.json"
+    data = {
+        "parent_task_id": parent_task_id,
+        "completed_ids": completed_ids,
+        "prior_results": prior_results,
+    }
+    ckpt_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    _log.debug("Decompose checkpoint saved: %s (%d sub-tasks done)", ckpt_path, len(completed_ids))
+    return ckpt_path
+
+
+def load_checkpoint(parent_task_id: str) -> dict | None:
+    """Load decompose checkpoint if it exists. Returns None if no checkpoint."""
+    from multi_agent.config import workspace_dir
+    ckpt_path = workspace_dir() / "checkpoints" / f"decompose-{parent_task_id}.json"
+    if not ckpt_path.exists():
+        return None
+    try:
+        data = json.loads(ckpt_path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and "completed_ids" in data and "prior_results" in data:
+            _log.info("Decompose checkpoint loaded: %d sub-tasks already done", len(data["completed_ids"]))
+            return data
+    except Exception as exc:
+        _log.warning("Failed to load decompose checkpoint: %s", exc)
+    return None
+
+
+def clear_checkpoint(parent_task_id: str) -> None:
+    """Remove checkpoint after successful completion."""
+    from multi_agent.config import workspace_dir
+    ckpt_path = workspace_dir() / "checkpoints" / f"decompose-{parent_task_id}.json"
+    if ckpt_path.exists():
+        ckpt_path.unlink(missing_ok=True)
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,63}$")
 

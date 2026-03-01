@@ -449,13 +449,27 @@ def _run_decomposed(app, parent_task_id, requirement, skill, builder, reviewer,
             return
 
     # Phase 3: Execute each sub-task sequentially
-    prior_results: list[dict] = []
+    # C2: Load checkpoint for crash recovery (MAS-FIRE 2026 fault tolerance)
+    from multi_agent.meta_graph import save_checkpoint, load_checkpoint, clear_checkpoint
+    ckpt = load_checkpoint(parent_task_id)
+    prior_results: list[dict] = ckpt["prior_results"] if ckpt else []
+    completed_ids: set[str] = set(ckpt["completed_ids"]) if ckpt else set()
     failed_ids: set[str] = set()  # track failed sub-task IDs for dep skipping
+    if ckpt:
+        click.echo(f"💾 恢复 checkpoint: {len(completed_ids)} 个子任务已完成")
+        # Rebuild failed_ids from prior_results
+        for pr in prior_results:
+            if pr.get("status") not in ("approved", "completed", "skipped"):
+                failed_ids.add(pr["sub_id"])
 
     total = len(sorted_tasks)
     decompose_start = time.time()
 
     for i, st in enumerate(sorted_tasks, 1):
+        # Skip already-completed sub-tasks (from checkpoint)
+        if st.id in completed_ids:
+            click.echo(f"\n[{i}/{total}] ⏩ {st.id} 已完成 (checkpoint)")
+            continue
         done_count = len([r for r in prior_results if r["status"] in ("approved", "completed", "skipped")])
         pct = int(done_count / total * 100)
 
@@ -547,6 +561,8 @@ def _run_decomposed(app, parent_task_id, requirement, skill, builder, reviewer,
             "estimated_minutes": getattr(st, 'estimated_minutes', 0),
             "reviewer_feedback": reviewer_out.get("feedback", ""),
         })
+        completed_ids.add(st.id)
+        save_checkpoint(parent_task_id, prior_results, list(completed_ids))
         done_count2 = len([r for r in prior_results if r["status"] in ("approved", "completed", "skipped")])
         pct2 = int(done_count2 / total * 100)
         if sub_status in ("approved", "completed"):
@@ -639,6 +655,8 @@ def _run_decomposed(app, parent_task_id, requirement, skill, builder, reviewer,
         "task_id": parent_task_id, "status": agg["final_status"],
         "sub_results": prior_results,
     })
+    # C2: Clear checkpoint on completion (MAS-FIRE 2026)
+    clear_checkpoint(parent_task_id)
     release_lock()
     clear_runtime()
 

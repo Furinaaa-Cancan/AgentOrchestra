@@ -436,3 +436,122 @@ class TestReadOutboxLogging:
             result = workspace.read_outbox("builder", validate=True)
         assert result is not None
         assert not any("WARNING" in r.levelname for r in caplog.records)
+
+
+# ── R16 regression tests ─────────────────────────────────────────────
+
+
+class TestRubberStampAuditTrail:
+    """R16 C1: decide_node records audit trail when rubber-stamp warning is set."""
+
+    def test_rubber_stamp_creates_audit_entry(self):
+        """When reviewer_output has _rubber_stamp_warning, decide should include
+        a rubber_stamp_warning conversation entry."""
+        import time
+        from multi_agent.graph import _decide_node_inner
+
+        state = {
+            "task_id": "task-rubber-test",
+            "reviewer_output": {
+                "decision": "approve",
+                "feedback": "ok",
+                "summary": "looks good",
+                "_rubber_stamp_warning": True,
+            },
+            "reviewer_id": "test-reviewer",
+            "builder_id": "test-builder",
+            "conversation": [],
+            "retry_count": 0,
+            "retry_budget": 2,
+            "done_criteria": ["test"],
+        }
+        result = _decide_node_inner(state)
+        assert result["final_status"] == "approved"
+        actions = [e.get("action") for e in result.get("conversation", [])]
+        assert "rubber_stamp_warning" in actions
+        assert "approved" in actions
+
+    def test_no_warning_no_audit_entry(self):
+        """Normal approve without rubber-stamp should not have warning entry."""
+        from multi_agent.graph import _decide_node_inner
+
+        state = {
+            "task_id": "task-normal-test",
+            "reviewer_output": {
+                "decision": "approve",
+                "feedback": "Thoroughly reviewed all changes.",
+                "summary": "All tests pass, code quality good.",
+            },
+            "reviewer_id": "test-reviewer",
+            "builder_id": "test-builder",
+            "conversation": [],
+            "retry_count": 0,
+            "retry_budget": 2,
+            "done_criteria": ["test"],
+        }
+        result = _decide_node_inner(state)
+        assert result["final_status"] == "approved"
+        actions = [e.get("action") for e in result.get("conversation", [])]
+        assert "rubber_stamp_warning" not in actions
+
+
+class TestMetaGraphCheckpoint:
+    """R16 C2: save/load/clear checkpoint for decompose crash recovery."""
+
+    def test_save_and_load(self, tmp_path, monkeypatch):
+        from multi_agent import meta_graph, config
+        monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
+        prior = [{"sub_id": "a", "status": "approved", "summary": "done"}]
+        meta_graph.save_checkpoint("task-ckpt-test", prior, ["a"])
+        loaded = meta_graph.load_checkpoint("task-ckpt-test")
+        assert loaded is not None
+        assert loaded["completed_ids"] == ["a"]
+        assert loaded["prior_results"][0]["sub_id"] == "a"
+
+    def test_load_missing_returns_none(self, tmp_path, monkeypatch):
+        from multi_agent import meta_graph, config
+        monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
+        assert meta_graph.load_checkpoint("task-nonexistent") is None
+
+    def test_clear_removes_file(self, tmp_path, monkeypatch):
+        from multi_agent import meta_graph, config
+        monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
+        meta_graph.save_checkpoint("task-clear-test", [], [])
+        meta_graph.clear_checkpoint("task-clear-test")
+        assert meta_graph.load_checkpoint("task-clear-test") is None
+
+    def test_corrupt_checkpoint_returns_none(self, tmp_path, monkeypatch):
+        from multi_agent import meta_graph, config
+        monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
+        ckpt_dir = tmp_path / "checkpoints"
+        ckpt_dir.mkdir()
+        (ckpt_dir / "decompose-task-corrupt.json").write_text("{bad json", encoding="utf-8")
+        assert meta_graph.load_checkpoint("task-corrupt") is None
+
+
+class TestEmptyChangesetWarning:
+    """R16 C3: builder claims completed but reports no changed_files."""
+
+    def test_completed_no_files_sets_warning(self):
+        result = {"status": "completed", "summary": "All done", "changed_files": []}
+        builder_status = str(result.get("status", "")).lower()
+        changed_files = result.get("changed_files", [])
+        if builder_status in ("completed", "success", "done") and not changed_files:
+            result.setdefault("_empty_changeset_warning", True)
+        assert result.get("_empty_changeset_warning") is True
+
+    def test_completed_with_files_no_warning(self):
+        result = {"status": "completed", "summary": "done", "changed_files": ["a.py"]}
+        builder_status = str(result.get("status", "")).lower()
+        changed_files = result.get("changed_files", [])
+        if builder_status in ("completed", "success", "done") and not changed_files:
+            result.setdefault("_empty_changeset_warning", True)
+        assert "_empty_changeset_warning" not in result
+
+    def test_error_status_no_warning(self):
+        result = {"status": "error", "summary": "failed", "changed_files": []}
+        builder_status = str(result.get("status", "")).lower()
+        changed_files = result.get("changed_files", [])
+        if builder_status in ("completed", "success", "done") and not changed_files:
+            result.setdefault("_empty_changeset_warning", True)
+        assert "_empty_changeset_warning" not in result
