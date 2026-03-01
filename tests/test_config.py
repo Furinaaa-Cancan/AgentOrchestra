@@ -143,6 +143,24 @@ class TestValidateConfig:
         from multi_agent.config import validate_config
         assert validate_config({}) == []
 
+    def test_retry_budget_out_of_range(self):
+        from multi_agent.config import validate_config
+        assert any("out of range" in w for w in validate_config({"retry_budget": -1}))
+        assert any("out of range" in w for w in validate_config({"retry_budget": 21}))
+        assert validate_config({"retry_budget": 3}) == []
+
+    def test_timeout_sec_nonpositive(self):
+        from multi_agent.config import validate_config
+        assert any("positive" in w for w in validate_config({"timeout_sec": 0}))
+        assert any("positive" in w for w in validate_config({"timeout_sec": -5}))
+        assert validate_config({"timeout_sec": 300}) == []
+
+    def test_watch_interval_too_small(self):
+        from multi_agent.config import validate_config
+        assert any("0.1" in w for w in validate_config({"watch_interval": 0}))
+        assert any("0.1" in w for w in validate_config({"watch_interval": -1}))
+        assert validate_config({"watch_interval": 0.5}) == []
+
 
 class TestFindRootDiagnostics:
     """Task 65: root_dir diagnostic improvement tests."""

@@ -106,12 +106,21 @@ def validate_config(data: dict) -> list[str]:
     unknown = set(data.keys()) - VALID_CONFIG_KEYS
     if unknown:
         warnings_list.append(f"Unknown config keys: {', '.join(sorted(unknown))}")
-    if "retry_budget" in data and not isinstance(data["retry_budget"], int):
-        warnings_list.append("retry_budget must be an integer")
-    if "timeout_sec" in data and not isinstance(data["timeout_sec"], (int, float)):
-        warnings_list.append("timeout_sec must be a number")
-    if "watch_interval" in data and not isinstance(data["watch_interval"], (int, float)):
-        warnings_list.append("watch_interval must be a number")
+    if "retry_budget" in data:
+        if not isinstance(data["retry_budget"], int):
+            warnings_list.append("retry_budget must be an integer")
+        elif not (0 <= data["retry_budget"] <= 20):
+            warnings_list.append(f"retry_budget={data['retry_budget']} out of range (0-20)")
+    if "timeout_sec" in data:
+        if not isinstance(data["timeout_sec"], (int, float)):
+            warnings_list.append("timeout_sec must be a number")
+        elif data["timeout_sec"] <= 0:
+            warnings_list.append(f"timeout_sec must be positive, got {data['timeout_sec']}")
+    if "watch_interval" in data:
+        if not isinstance(data["watch_interval"], (int, float)):
+            warnings_list.append("watch_interval must be a number")
+        elif data["watch_interval"] < 0.1:
+            warnings_list.append(f"watch_interval must be >= 0.1s, got {data['watch_interval']}")
     return warnings_list
 
 
