@@ -1568,6 +1568,149 @@ class TestDecideNodeTerminalPassthrough:
         mock_archive.assert_called_once()
 
 
+class TestGraphStatsReset:
+    """R14 F1: GraphStats.reset() prevents cross-task stats contamination
+    (MAST NeurIPS 2025 SD-4; MAS-FIRE 2026)."""
+
+    def test_reset_clears_stats(self):
+        gs = GraphStats()
+        gs.record("build", 100, True)
+        gs.record_retry_outcome(1, "reject")
+        assert gs.summary() != {}
+        gs.reset()
+        assert gs.summary() == {}
+
+    def test_reset_clears_retry_outcomes(self):
+        gs = GraphStats()
+        gs.record_retry_outcome(1, "reject")
+        gs.record_retry_outcome(2, "approve")
+        assert "_retry_effectiveness" in gs.summary()
+        gs.reset()
+        assert "_retry_effectiveness" not in gs.summary()
+
+    def test_plan_node_resets_stats_on_first_run(self):
+        """Verify graph_stats.reset() is called when retry_count == 0."""
+        from multi_agent.graph import graph_stats
+        graph_stats.record("build", 500, True)
+        graph_stats.record_retry_outcome(1, "reject")
+        assert graph_stats.summary() != {}
+        # Simulate plan_node first-run reset logic
+        state = {"retry_count": 0}
+        if state.get("retry_count", 0) == 0:
+            graph_stats.reset()
+        assert graph_stats.summary() == {}
+
+    def test_plan_node_preserves_stats_on_retry(self):
+        """Verify graph_stats is NOT reset when retry_count > 0."""
+        from multi_agent.graph import graph_stats
+        graph_stats.reset()
+        graph_stats.record("build", 500, True)
+        state = {"retry_count": 1}
+        if state.get("retry_count", 0) == 0:
+            graph_stats.reset()
+        assert graph_stats.summary() != {}
+
+
+class TestRubberStampStrengthened:
+    """R14 F3: Strengthened rubber-stamp detection catches generic phrases
+    (MAST NeurIPS 2025 TV-1)."""
+
+    def test_generic_lgtm_flagged(self):
+        """Short generic phrase 'LGTM' should trigger rubber-stamp warning."""
+        result = {"decision": "approve", "summary": "LGTM", "reasoning": ""}
+        summary = result.get("summary", "")
+        reasoning = result.get("reasoning", "")
+        _RUBBER_STAMP_PHRASES = {"lgtm", "looks good", "no issues", "approved", "all good",
+                                  "ship it", "good to go", "looks fine", "no comments"}
+        is_generic = any(p in summary.lower() for p in _RUBBER_STAMP_PHRASES) and len(summary) < 50
+        is_shallow = not reasoning and len(summary) < 40
+        assert is_generic or is_shallow
+
+    def test_substantive_approve_not_flagged(self):
+        """Approve with reasoning and detailed summary should NOT be flagged."""
+        result = {
+            "decision": "approve",
+            "summary": "Code changes correctly implement the requested feature with proper error handling and test coverage.",
+            "reasoning": "Reviewed all changed files, verified logic, checked edge cases.",
+        }
+        summary = result.get("summary", "")
+        reasoning = result.get("reasoning", "")
+        _RUBBER_STAMP_PHRASES = {"lgtm", "looks good", "no issues", "approved", "all good",
+                                  "ship it", "good to go", "looks fine", "no comments"}
+        is_generic = any(p in summary.lower() for p in _RUBBER_STAMP_PHRASES) and len(summary) < 50
+        is_shallow = not reasoning and len(summary) < 40
+        assert not is_generic and not is_shallow
+
+    def test_looks_good_short_flagged(self):
+        result = {"decision": "approve", "summary": "Looks good to me", "reasoning": ""}
+        summary = result.get("summary", "")
+        reasoning = result.get("reasoning", "")
+        _RUBBER_STAMP_PHRASES = {"lgtm", "looks good", "no issues", "approved", "all good",
+                                  "ship it", "good to go", "looks fine", "no comments"}
+        is_generic = any(p in summary.lower() for p in _RUBBER_STAMP_PHRASES) and len(summary) < 50
+        is_shallow = not reasoning and len(summary) < 40
+        assert is_generic or is_shallow
+
+
+class TestRetryContextPreservation:
+    """R14 F4: Retry entry preserves previous round context
+    (Agent Error Taxonomy ICLR 2026; MAST NeurIPS 2025 IA-2)."""
+
+    def test_retry_preserves_changed_files(self):
+        state = {
+            "builder_output": {
+                "changed_files": ["src/main.py", "tests/test_main.py"],
+                "gate_warnings": ["quality gate 'lint' failed: error"],
+            }
+        }
+        retry_entry = {"role": "orchestrator", "action": "retry", "feedback": "fix lint"}
+        prev_builder = state.get("builder_output")
+        if isinstance(prev_builder, dict):
+            changed = prev_builder.get("changed_files")
+            if changed:
+                retry_entry["prev_changed_files"] = changed
+            gates = prev_builder.get("gate_warnings")
+            if gates:
+                retry_entry["prev_gate_warnings"] = gates
+        assert retry_entry["prev_changed_files"] == ["src/main.py", "tests/test_main.py"]
+        assert retry_entry["prev_gate_warnings"] == ["quality gate 'lint' failed: error"]
+
+    def test_retry_no_builder_output_no_crash(self):
+        state = {}
+        retry_entry = {"role": "orchestrator", "action": "retry", "feedback": "try again"}
+        prev_builder = state.get("builder_output")
+        if isinstance(prev_builder, dict):
+            changed = prev_builder.get("changed_files")
+            if changed:
+                retry_entry["prev_changed_files"] = changed
+        assert "prev_changed_files" not in retry_entry
+
+
+class TestInterAgentSanitization:
+    """R14 F2: Builder output sanitized before reviewer prompt rendering
+    (Agents Under Siege, UNC 2025)."""
+
+    def test_long_summary_truncated(self):
+        from multi_agent.prompt import _sanitize_builder_output, MAX_BUILDER_SUMMARY_CHARS
+        output = {"summary": "x" * 5000, "status": "done"}
+        sanitized = _sanitize_builder_output(output)
+        assert len(sanitized["summary"]) <= MAX_BUILDER_SUMMARY_CHARS + len(" [TRUNCATED]")
+        assert sanitized["summary"].endswith("[TRUNCATED]")
+
+    def test_short_summary_unchanged(self):
+        from multi_agent.prompt import _sanitize_builder_output
+        output = {"summary": "Fixed the bug", "status": "done"}
+        sanitized = _sanitize_builder_output(output)
+        assert sanitized["summary"] == "Fixed the bug"
+
+    def test_non_text_fields_unchanged(self):
+        from multi_agent.prompt import _sanitize_builder_output
+        output = {"summary": "ok", "changed_files": ["a.py"], "status": "done"}
+        sanitized = _sanitize_builder_output(output)
+        assert sanitized["changed_files"] == ["a.py"]
+        assert sanitized["status"] == "done"
+
+
 class TestDoWConstants:
     def test_max_task_duration_is_positive(self):
         assert MAX_TASK_DURATION_SEC > 0

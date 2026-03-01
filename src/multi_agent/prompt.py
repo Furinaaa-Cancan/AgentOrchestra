@@ -86,6 +86,30 @@ def render_builder_prompt(
     return _truncate_if_needed(result)
 
 
+MAX_BUILDER_SUMMARY_CHARS = 3000
+
+
+def _sanitize_builder_output(output: dict) -> dict:
+    """Sanitize builder output before embedding into reviewer prompt.
+
+    Prevents inter-agent prompt injection (Agents Under Siege, UNC 2025;
+    MAST NeurIPS 2025 inter-agent misalignment IA-2).
+
+    - Caps free-text fields to prevent context flooding
+    - Does NOT strip content — reviewer needs full context for accurate review
+    """
+    sanitized = dict(output)
+    for field in ("summary", "feedback", "reasoning"):
+        val = sanitized.get(field)
+        if isinstance(val, str) and len(val) > MAX_BUILDER_SUMMARY_CHARS:
+            log.warning(
+                "Builder %s truncated from %d to %d chars (inter-agent sanitization).",
+                field, len(val), MAX_BUILDER_SUMMARY_CHARS,
+            )
+            sanitized[field] = val[:MAX_BUILDER_SUMMARY_CHARS] + " [TRUNCATED]"
+    return sanitized
+
+
 def render_reviewer_prompt(
     task: Task,
     contract: SkillContract,
@@ -97,11 +121,12 @@ def render_reviewer_prompt(
     env = _env()
     tmpl_name = _resolve_template(env, contract.id, "reviewer")
     tmpl = env.get_template(tmpl_name)
+    safe_output = _sanitize_builder_output(builder_output)
     result = tmpl.render(
         task=task,
         contract=contract,
         agent_id=agent_id,
-        builder_output=builder_output,
+        builder_output=safe_output,
         builder_id=builder_id,
     )
     result += "\n" + get_prompt_metadata("reviewer")

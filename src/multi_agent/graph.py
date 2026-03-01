@@ -101,6 +101,12 @@ class GraphStats:
             }
         return result
 
+    def reset(self) -> None:
+        """Clear all accumulated stats. Call at task start to prevent cross-task contamination
+        (MAST NeurIPS 2025 — system design failure mode SD-4; MAS-FIRE 2026)."""
+        self._stats.clear()
+        self._retry_outcomes.clear()
+
     def save(self, path=None) -> None:
         """Save stats to .multi-agent/stats.json."""
         import json as _json
@@ -390,6 +396,12 @@ def plan_node(state: WorkflowState) -> dict:
 
 def _plan_node_inner(state: WorkflowState) -> dict:
     graph_hooks.fire_enter("plan", state)
+
+    # Reset stats on first run of a new task to prevent cross-task contamination
+    # (MAST NeurIPS 2025 SD-4; MAS-FIRE 2026 reliability evaluation).
+    if state.get("retry_count", 0) == 0:
+        graph_stats.reset()
+
     skill_id = state["skill_id"]
     contract = load_contract(skill_id)
 
@@ -790,16 +802,21 @@ def _review_node_inner(state: WorkflowState) -> dict:
                 "Please re-examine your implementation against the done criteria."
             )
 
-    # Rubber-stamp detection (NeurIPS 2025, Za et al. — collusion-aware oversight):
-    # If reviewer approves without reasoning or substantive summary, flag it.
+    # Rubber-stamp detection (MAST NeurIPS 2025 TV-1; collusion-aware oversight):
+    # Flag approvals that lack substantive independent verification evidence.
     if decision == "approve":
         reasoning = result.get("reasoning", "")
         summary = result.get("summary", "")
-        if not reasoning and len(summary) < 20:
+        _RUBBER_STAMP_PHRASES = {"lgtm", "looks good", "no issues", "approved", "all good",
+                                  "ship it", "good to go", "looks fine", "no comments"}
+        is_generic = any(p in summary.lower() for p in _RUBBER_STAMP_PHRASES) and len(summary) < 50
+        is_shallow = not reasoning and len(summary) < 40
+        if is_shallow or is_generic:
             _log.warning(
-                "Rubber-stamp approve detected: no reasoning, summary=%r. "
-                "Collusion risk — reviewer may not have performed independent verification.",
-                summary,
+                "Rubber-stamp approve detected: reasoning=%r, summary=%r (len=%d). "
+                "Collusion risk — reviewer may not have performed independent verification "
+                "(MAST NeurIPS 2025 TV-1).",
+                reasoning[:60] if reasoning else "", summary[:60], len(summary),
             )
             # Inject warning into output so decide_node can see it
             result["_rubber_stamp_warning"] = True
@@ -1000,11 +1017,23 @@ def _decide_node_inner(state: WorkflowState) -> dict:
         status_msg=f"🔄 重试 ❌ 驳回 ({retry_count}/{budget})",
     )
 
+    # Preserve previous round context to prevent inter-round information loss
+    # (Agent Error Taxonomy ICLR 2026; MAST NeurIPS 2025 IA-2).
+    retry_entry: dict[str, Any] = {
+        "role": "orchestrator", "action": "retry", "feedback": feedback, "t": time.time(),
+    }
+    prev_builder = state.get("builder_output")
+    if isinstance(prev_builder, dict):
+        changed = prev_builder.get("changed_files")
+        if changed:
+            retry_entry["prev_changed_files"] = changed
+        gates = prev_builder.get("gate_warnings")
+        if gates:
+            retry_entry["prev_gate_warnings"] = gates
+
     retry_result = {
         "retry_count": retry_count,
-        "conversation": [
-            {"role": "orchestrator", "action": "retry", "feedback": feedback, "t": time.time()}
-        ],
+        "conversation": [retry_entry],
     }
     graph_hooks.fire_exit("decide", state, retry_result)
     return retry_result
