@@ -237,6 +237,20 @@ class TestHandleErrorsDecorator:
             with pytest.raises(SystemExit):
                 raise_error()
 
+    def test_keyboard_interrupt_releases_lock(self):
+        from multi_agent.cli import handle_errors
+
+        @handle_errors
+        def raise_kb():
+            raise KeyboardInterrupt()
+
+        with patch("multi_agent.cli.read_lock", return_value="task-123") as rl, \
+             patch("multi_agent.cli.release_lock") as rel:
+            with pytest.raises(SystemExit) as exc_info:
+                raise_kb()
+            assert exc_info.value.code == 0
+            rel.assert_called_once()
+
 
 class TestDuplicateSubTaskId:
     """Duplicate sub_task IDs treated as critical error in read_decompose_result."""

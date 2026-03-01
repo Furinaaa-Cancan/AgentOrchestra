@@ -173,9 +173,7 @@ def acquire_lock(task_id: str) -> None:
 
 def release_lock() -> None:
     """Remove lock file."""
-    p = _lock_path()
-    if p.exists():
-        p.unlink()
+    _lock_path().unlink(missing_ok=True)
 
 
 def clear_runtime() -> None:

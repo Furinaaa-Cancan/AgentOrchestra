@@ -45,6 +45,11 @@ def handle_errors(f):
             raise
         except KeyboardInterrupt:
             click.echo("\n⏹️  操作已取消")
+            try:
+                if read_lock():
+                    release_lock()
+            except Exception:
+                pass
             raise SystemExit(0)
         except click.exceptions.Exit:
             raise
