@@ -103,6 +103,10 @@ def resolve_builder(
     candidates = _eligible(agents, contract, ["implementation"])
     if candidates:
         return candidates[0].id
+
+    # Last resort: any agent (bypasses health filter)
+    if agents:
+        return agents[0].id
     raise ValueError("No agent configured for builder role")
 
 

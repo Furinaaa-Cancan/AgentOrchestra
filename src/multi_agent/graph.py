@@ -68,21 +68,28 @@ class GraphStats:
             self._stats[node] = {"count": 0, "total_ms": 0, "errors": 0}
         s = self._stats[node]
         for key in ("input_tokens", "output_tokens", "total_tokens"):
-            if key in usage:
-                s[key] = s.get(key, 0) + usage[key]
-        if "cost" in usage:
-            s["cost"] = round(s.get("cost", 0.0) + usage["cost"], 6)
+            val = usage.get(key)
+            if isinstance(val, (int, float)):
+                s[key] = s.get(key, 0) + int(val)
+        cost = usage.get("cost")
+        if isinstance(cost, (int, float)):
+            s["cost"] = round(s.get("cost", 0.0) + float(cost), 6)
 
     def summary(self) -> dict[str, dict]:
         result = {}
         for node, s in self._stats.items():
             avg = s["total_ms"] / s["count"] if s["count"] else 0
             error_rate = s["errors"] / s["count"] if s["count"] else 0
-            result[node] = {
+            entry = {
                 "count": s["count"],
                 "avg_ms": round(avg),
                 "error_rate": round(error_rate, 3),
             }
+            # Include token usage stats if recorded (FinOps)
+            for tk in ("input_tokens", "output_tokens", "total_tokens", "cost"):
+                if tk in s:
+                    entry[tk] = s[tk]
+            result[node] = entry
         # Retry effectiveness metrics (DDI / Agentless cost tracking)
         if self._retry_outcomes:
             total_retries = len(self._retry_outcomes)
@@ -147,7 +154,7 @@ def trim_conversation(conversation: list[dict]) -> list[dict]:
         a = e.get("action", "unknown")
         action_counts[a] = action_counts.get(a, 0) + 1
         fb = e.get("feedback", "")
-        if fb and len(feedback_snippets) < 3:
+        if fb and isinstance(fb, str) and len(feedback_snippets) < 3:
             feedback_snippets.append(fb[:80])
     summary_parts = [f"{a}×{c}" for a, c in action_counts.items()]
     trimmed_marker = {
@@ -692,6 +699,19 @@ def review_node(state: WorkflowState) -> dict:
 
 def _review_node_inner(state: WorkflowState) -> dict:
     graph_hooks.fire_enter("review", state)
+
+    # Total task duration guard (OWASP LLM10:2025 — DoW prevention)
+    task_started = state.get("task_started_at")
+    if task_started:
+        total_elapsed = time.time() - task_started
+        if total_elapsed > MAX_TASK_DURATION_SEC:
+            return {
+                "reviewer_output": {"decision": "reject",
+                                    "feedback": f"TOTAL_TIMEOUT: task running {int(total_elapsed)}s exceeds limit"},
+                "conversation": [{"role": "orchestrator", "action": "total_timeout",
+                                  "elapsed": int(total_elapsed), "t": time.time()}],
+            }
+
     reviewer_id = state.get("reviewer_id", "?")
 
     result = interrupt({
@@ -827,10 +847,15 @@ def _decide_node_inner(state: WorkflowState) -> dict:
     reviewer_output = state.get("reviewer_output", {})
     decision = reviewer_output.get("decision", "reject")
 
-    # Track retry effectiveness (DDI measurement)
-    retry_count = state.get("retry_count", 0)
-    if retry_count > 0:
-        graph_stats.record_retry_outcome(retry_count, decision)
+    # Track retry effectiveness (DDI measurement) — count all review rounds,
+    # not just reject retries. request_changes doesn't increment retry_count
+    # but still represents a review round for DDI tracking.
+    review_round = sum(
+        1 for e in state.get("conversation", [])
+        if e.get("action") in ("retry", "request_changes")
+    )
+    if review_round > 0:
+        graph_stats.record_retry_outcome(review_round, decision)
 
     if decision == "approve":
         final_entry = {"role": "orchestrator", "action": "approved", "t": time.time()}

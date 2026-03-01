@@ -21,6 +21,10 @@ from multi_agent.graph import (
     _conn_pool,
     EventHooks,
     graph_hooks,
+    GraphStats,
+    trim_conversation,
+    MAX_TASK_DURATION_SEC,
+    MAX_CONVERSATION_SIZE,
 )
 
 
@@ -1339,6 +1343,112 @@ class TestCompileGraphCaching:
             assert g1 is not g2
         finally:
             reset_graph()
+
+
+class TestGraphStats:
+    """Edge case tests for GraphStats (R5-R7 additions)."""
+
+    def test_record_token_usage_valid(self):
+        gs = GraphStats()
+        gs.record("build", 100, True)
+        gs.record_token_usage("build", {"input_tokens": 500, "output_tokens": 200, "cost": 0.003})
+        s = gs.summary()
+        assert s["build"]["input_tokens"] == 500
+        assert s["build"]["output_tokens"] == 200
+        assert s["build"]["cost"] == 0.003
+
+    def test_record_token_usage_accumulates(self):
+        gs = GraphStats()
+        gs.record("build", 100, True)
+        gs.record_token_usage("build", {"input_tokens": 500, "cost": 0.001})
+        gs.record_token_usage("build", {"input_tokens": 300, "cost": 0.002})
+        s = gs.summary()
+        assert s["build"]["input_tokens"] == 800
+        assert s["build"]["cost"] == 0.003
+
+    def test_record_token_usage_ignores_non_numeric(self):
+        """Malformed IDE output should not crash (type safety fix)."""
+        gs = GraphStats()
+        gs.record("build", 100, True)
+        gs.record_token_usage("build", {"input_tokens": "abc", "cost": "free"})
+        s = gs.summary()
+        assert "input_tokens" not in s["build"]
+        assert "cost" not in s["build"]
+
+    def test_record_token_usage_mixed_types(self):
+        gs = GraphStats()
+        gs.record("build", 100, True)
+        gs.record_token_usage("build", {"input_tokens": 500, "output_tokens": None, "cost": 0.01})
+        s = gs.summary()
+        assert s["build"]["input_tokens"] == 500
+        assert "output_tokens" not in s["build"]
+        assert s["build"]["cost"] == 0.01
+
+    def test_record_token_usage_creates_node_if_missing(self):
+        gs = GraphStats()
+        gs.record_token_usage("unknown_node", {"total_tokens": 42})
+        s = gs.summary()
+        assert s["unknown_node"]["total_tokens"] == 42
+        assert s["unknown_node"]["count"] == 0
+
+    def test_record_retry_outcome(self):
+        gs = GraphStats()
+        gs.record_retry_outcome(1, "reject")
+        gs.record_retry_outcome(2, "approve")
+        s = gs.summary()
+        assert s["_retry_effectiveness"]["total_retries"] == 2
+        assert s["_retry_effectiveness"]["retry_success_rate"] == 0.5
+
+    def test_summary_no_retry_outcomes(self):
+        gs = GraphStats()
+        gs.record("plan", 50, True)
+        s = gs.summary()
+        assert "_retry_effectiveness" not in s
+
+    def test_summary_empty(self):
+        gs = GraphStats()
+        s = gs.summary()
+        assert s == {}
+
+
+class TestTrimConversationEdgeCases:
+    """Edge case tests for trim_conversation (R5 additions)."""
+
+    def test_no_trim_needed(self):
+        conv = [{"role": "user", "t": 1}] * 10
+        result = trim_conversation(conv)
+        assert len(result) == 10
+
+    def test_trim_at_boundary(self):
+        conv = [{"role": "user", "action": "test", "t": i} for i in range(MAX_CONVERSATION_SIZE + 1)]
+        result = trim_conversation(conv)
+        assert len(result) == MAX_CONVERSATION_SIZE
+        # Should have a trimmed marker
+        assert any(e.get("action") == "trimmed" for e in result)
+
+    def test_non_string_feedback_does_not_crash(self):
+        """feedback could be int/dict — type safety fix."""
+        conv = [{"role": "user", "action": "retry", "feedback": 42, "t": i}
+                for i in range(MAX_CONVERSATION_SIZE + 5)]
+        result = trim_conversation(conv)
+        marker = [e for e in result if e.get("action") == "trimmed"][0]
+        # Non-string feedback should be silently skipped
+        assert marker["key_feedback"] == []
+
+    def test_feedback_snippets_limited_to_three(self):
+        conv = [{"role": "user", "action": "retry", "feedback": f"fb-{i}", "t": i}
+                for i in range(MAX_CONVERSATION_SIZE + 20)]
+        result = trim_conversation(conv)
+        marker = [e for e in result if e.get("action") == "trimmed"][0]
+        assert len(marker["key_feedback"]) <= 3
+
+
+class TestDoWConstants:
+    def test_max_task_duration_is_positive(self):
+        assert MAX_TASK_DURATION_SEC > 0
+
+    def test_max_task_duration_reasonable(self):
+        assert 3600 <= MAX_TASK_DURATION_SEC <= 14400  # 1-4 hours
 
 
 class TestBuildGraph:
