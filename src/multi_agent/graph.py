@@ -101,6 +101,38 @@ class GraphStats:
             }
         return result
 
+    def cumulative_totals(self) -> dict[str, int | float]:
+        """Aggregate token/cost totals across all nodes (SWE-agent cost tracking).
+
+        Returns dict with total_tokens, input_tokens, output_tokens, cost.
+        """
+        totals: dict[str, int | float] = {}
+        for s in self._stats.values():
+            for key in ("input_tokens", "output_tokens", "total_tokens"):
+                if key in s:
+                    totals[key] = totals.get(key, 0) + s[key]
+            if "cost" in s:
+                totals["cost"] = round(totals.get("cost", 0.0) + s["cost"], 6)
+        return totals
+
+    def warn_if_over_budget(self, max_tokens: int = 500_000) -> bool:
+        """Log warning if cumulative token usage exceeds threshold.
+
+        Inspired by SWE-agent cost limits. Returns True if over budget.
+        Does NOT hard-fail — the orchestrator doesn't control LLM calls,
+        but warns for observability (FinOps).
+        """
+        totals = self.cumulative_totals()
+        used = totals.get("total_tokens", 0)
+        if used > max_tokens:
+            _log.warning(
+                "Token budget warning: %d tokens used (threshold: %d). "
+                "Consider reviewing task complexity or retry count.",
+                used, max_tokens,
+            )
+            return True
+        return False
+
     def reset(self) -> None:
         """Clear all accumulated stats. Call at task start to prevent cross-task contamination
         (MAST NeurIPS 2025 — system design failure mode SD-4; MAS-FIRE 2026)."""

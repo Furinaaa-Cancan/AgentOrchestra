@@ -745,3 +745,107 @@ class TestStructuredRetryFeedback:
         feedback = result["conversation"][0].get("feedback", "")
         assert "## Reviewer Decision:" in feedback
         assert "Quality Gate Warnings" not in feedback
+
+
+# ── R19 regression tests ─────────────────────────────────────────────
+
+
+class TestGraphStatsCumulativeTotals:
+    """R19 F1: GraphStats cumulative_totals and warn_if_over_budget."""
+
+    def test_cumulative_across_nodes(self):
+        from multi_agent.graph import GraphStats
+        gs = GraphStats()
+        gs.record("build", 100, True)
+        gs.record_token_usage("build", {"total_tokens": 1000, "cost": 0.01})
+        gs.record("review", 200, True)
+        gs.record_token_usage("review", {"total_tokens": 500, "cost": 0.005})
+        totals = gs.cumulative_totals()
+        assert totals["total_tokens"] == 1500
+        assert abs(totals["cost"] - 0.015) < 1e-6
+
+    def test_cumulative_empty(self):
+        from multi_agent.graph import GraphStats
+        gs = GraphStats()
+        assert gs.cumulative_totals() == {}
+
+    def test_warn_over_budget(self, caplog):
+        import logging
+        from multi_agent.graph import GraphStats
+        gs = GraphStats()
+        gs.record("build", 100, True)
+        gs.record_token_usage("build", {"total_tokens": 600_000})
+        with caplog.at_level(logging.WARNING):
+            result = gs.warn_if_over_budget(max_tokens=500_000)
+        assert result is True
+        assert "Token budget warning" in caplog.text
+
+    def test_no_warn_under_budget(self, caplog):
+        import logging
+        from multi_agent.graph import GraphStats
+        gs = GraphStats()
+        gs.record("build", 100, True)
+        gs.record_token_usage("build", {"total_tokens": 100})
+        with caplog.at_level(logging.WARNING):
+            result = gs.warn_if_over_budget(max_tokens=500_000)
+        assert result is False
+        assert "Token budget" not in caplog.text
+
+
+class TestWatcherContentHashDedup:
+    """R19 F2: watcher deduplicates based on content hash, not just mtime."""
+
+    def test_same_content_different_mtime_skipped(self, tmp_path, monkeypatch):
+        import json, os
+        from multi_agent import watcher as _watcher_mod
+        from multi_agent.watcher import OutboxPoller
+        monkeypatch.setattr(_watcher_mod, "outbox_dir", lambda: tmp_path)
+
+        data = {"status": "completed", "summary": "done"}
+        (tmp_path / "builder.json").write_text(json.dumps(data), encoding="utf-8")
+
+        poller = OutboxPoller()
+        # Reduce settle_time for faster tests
+        orig_wait = OutboxPoller._wait_stable
+        monkeypatch.setattr(OutboxPoller, "_wait_stable", staticmethod(
+            lambda path, settle_time=0.01, max_wait=0.05: orig_wait(path, settle_time=0.01, max_wait=0.05)
+        ))
+
+        # First poll — should detect
+        results1 = poller.check_once()
+        assert len(results1) == 1
+
+        # Touch file to change mtime but keep same content
+        import time
+        time.sleep(0.05)
+        os.utime(tmp_path / "builder.json", None)
+
+        # Second poll — same content, should be deduped
+        results2 = poller.check_once()
+        assert len(results2) == 0
+
+    def test_different_content_detected(self, tmp_path, monkeypatch):
+        import json
+        from multi_agent import watcher as _watcher_mod
+        from multi_agent.watcher import OutboxPoller
+        monkeypatch.setattr(_watcher_mod, "outbox_dir", lambda: tmp_path)
+        monkeypatch.setattr(OutboxPoller, "_wait_stable", staticmethod(
+            lambda path, settle_time=0.01, max_wait=0.05: True
+        ))
+
+        (tmp_path / "builder.json").write_text(
+            json.dumps({"status": "completed", "summary": "v1"}), encoding="utf-8"
+        )
+        poller = OutboxPoller()
+        results1 = poller.check_once()
+        assert len(results1) == 1
+
+        # Write different content
+        import time
+        time.sleep(0.05)
+        (tmp_path / "builder.json").write_text(
+            json.dumps({"status": "completed", "summary": "v2"}), encoding="utf-8"
+        )
+        results2 = poller.check_once()
+        assert len(results2) == 1
+        assert results2[0][1]["summary"] == "v2"

@@ -27,6 +27,7 @@ class OutboxPoller:
         self._current_interval = poll_interval
         self._idle_count = 0
         self._known: dict[str, float] = {}
+        self._content_hashes: dict[str, str] = {}  # F2: content-hash dedup
         self._warned_oversized: set[str] = set()
 
     def _scan(self) -> dict[str, Path]:
@@ -90,12 +91,21 @@ class OutboxPoller:
                 if not self._wait_stable(path):
                     continue  # File still changing, retry next poll
                 try:
-                    with path.open("r", encoding="utf-8") as f:
-                        data = json.load(f)
+                    raw = path.read_text(encoding="utf-8")
+                    data = json.loads(raw)
                     if isinstance(data, dict):
+                        # F2: Content-hash dedup (AutoGen idempotency pattern).
+                        # Prevents duplicate submissions from mtime jitter
+                        # on NFS/external drives or rapid file touch events.
+                        import hashlib
+                        content_hash = hashlib.md5(raw.encode()).hexdigest()
+                        if self._content_hashes.get(role) == content_hash:
+                            self._known[role] = mtime  # update mtime but skip
+                            continue
                         self._known[role] = mtime
+                        self._content_hashes[role] = content_hash
                         results.append((role, data))
-                except (json.JSONDecodeError, OSError):
+                except (json.JSONDecodeError, OSError, ValueError):
                     pass  # Partial write — retry on next poll
         return results
 

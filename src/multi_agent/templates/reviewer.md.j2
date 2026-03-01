@@ -25,6 +25,11 @@
 - {{ warning }}
 {% endfor %}
 {% endif %}
+{% if builder_output.get("_empty_changeset_warning") %}
+
+### ⚠️ 空变更集警告
+Builder 报告状态为 "{{ builder_output.get('status', '?') }}" 但未列出任何修改文件。请重点验证是否确实完成了代码变更。
+{% endif %}
 
 ## Builder 提交的报告
 
