@@ -163,7 +163,7 @@ class TestSpawnCliAgent:
         mock_proc.stderr = iter([])
         mock_proc.stdout = MagicMock()
         mock_proc.stdout.read.return_value = ""
-        mock_proc.wait.side_effect = real_subprocess.TimeoutExpired("sleep 999", 600)
+        mock_proc.wait.side_effect = [real_subprocess.TimeoutExpired("sleep 999", 600), None]
         mock_proc.kill = MagicMock()
 
         with patch("multi_agent.driver.workspace_dir", return_value=tmp_path), \

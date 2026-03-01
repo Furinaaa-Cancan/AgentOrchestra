@@ -162,6 +162,7 @@ def spawn_cli_agent(
                     _write_error(outbox_file, f"{agent_id} CLI produced no parseable JSON output")
         except subprocess.TimeoutExpired:
             proc.kill()
+            proc.wait()  # reap zombie
             _write_error(outbox_file, f"{agent_id} CLI timed out after {timeout_sec}s")
         except Exception as e:
             _write_error(outbox_file, f"{agent_id} CLI error: {e}")
