@@ -16,6 +16,67 @@ from typing import Any
 import click
 
 
+def _read_decompose_file(decompose_file: str) -> Any:
+    """Read decompose result from a JSON/YAML file. Exits on error."""
+    import json as _json
+
+    from multi_agent.schema import DecomposeResult
+    from multi_agent.workspace import release_lock
+    try:
+        raw = Path(decompose_file).read_text(encoding="utf-8")
+        if decompose_file.endswith((".yaml", ".yml")):
+            import yaml as _yaml
+            data = _yaml.safe_load(raw)
+        else:
+            data = _json.loads(raw)
+        click.echo(f"📂 从文件加载分解结果: {decompose_file}")
+        return DecomposeResult(**data)
+    except Exception as e:
+        click.echo(f"❌ 无法读取分解文件: {e}", err=True)
+        release_lock()
+        sys.exit(1)
+
+
+def _wait_for_decompose_agent(
+    requirement: str, builder: str, timeout: int,
+) -> Any | None:
+    """Write prompt and wait for agent to produce decompose result."""
+    from multi_agent.decompose import read_decompose_result, write_decompose_prompt
+    from multi_agent.workspace import clear_runtime, release_lock
+
+    write_decompose_prompt(requirement)
+    click.echo("📋 分解任务中… 在 IDE 里对 AI 说:")
+    click.echo('   "帮我完成 @.multi-agent/TASK.md 里的任务"')
+
+    from multi_agent.driver import can_use_cli, get_agent_driver, spawn_cli_agent
+    from multi_agent.router import load_agents
+    agents = load_agents()
+    decompose_agent = builder if builder else (agents[0].id if agents else "?")
+    drv = get_agent_driver(decompose_agent)
+    if drv["driver"] == "cli" and drv["command"] and can_use_cli(drv["command"]):
+        click.echo(f"🤖 自动调用 {decompose_agent} CLI 进行任务分解…")
+        spawn_cli_agent(decompose_agent, "decompose", drv["command"], timeout_sec=timeout)
+
+    click.echo("👁️  等待任务分解结果… (Ctrl-C 停止)")
+    deadline = time.time() + timeout
+    try:
+        while True:
+            result = read_decompose_result()
+            if result:
+                return result
+            if time.time() > deadline:
+                click.echo(f"❌ 任务分解超时 ({timeout}s)。", err=True)
+                release_lock()
+                clear_runtime()
+                sys.exit(1)
+            time.sleep(2)
+    except KeyboardInterrupt:
+        click.echo("\n⏹️  Decomposition stopped.")
+        release_lock()
+        clear_runtime()
+        return None
+
+
 def _obtain_decompose_result(
     requirement: str,
     skill: str,
@@ -26,9 +87,6 @@ def _obtain_decompose_result(
     no_cache: bool = False,
 ) -> Any:
     """Phase 1: Obtain decompose result from cache, file, or by waiting for agent."""
-    from multi_agent.decompose import read_decompose_result, write_decompose_prompt
-    from multi_agent.workspace import clear_runtime, release_lock
-
     # Check cache first
     result = None
     if not decompose_file and not no_cache:
@@ -37,61 +95,14 @@ def _obtain_decompose_result(
         if result:
             click.echo("💾 使用缓存的分解结果 (原始需求相同)")
 
-    # Read from file if provided
     if result is None and decompose_file:
-        import json as _json
-
-        from multi_agent.schema import DecomposeResult
-        try:
-            raw = Path(decompose_file).read_text(encoding="utf-8")
-            if decompose_file.endswith((".yaml", ".yml")):
-                import yaml as _yaml
-                data = _yaml.safe_load(raw)
-            else:
-                data = _json.loads(raw)
-            result = DecomposeResult(**data)
-            click.echo(f"📂 从文件加载分解结果: {decompose_file}")
-        except Exception as e:
-            click.echo(f"❌ 无法读取分解文件: {e}", err=True)
-            release_lock()
-            sys.exit(1)
+        result = _read_decompose_file(decompose_file)
 
     if result is None:
-        # Write decompose prompt → wait for agent to decompose
-        write_decompose_prompt(requirement)
-        click.echo("📋 分解任务中… 在 IDE 里对 AI 说:")
-        click.echo('   "帮我完成 @.multi-agent/TASK.md 里的任务"')
-
-        from multi_agent.driver import can_use_cli, get_agent_driver, spawn_cli_agent
-        from multi_agent.router import load_agents
-        agents = load_agents()
-        decompose_agent = builder if builder else (agents[0].id if agents else "?")
-        drv = get_agent_driver(decompose_agent)
-        if drv["driver"] == "cli" and drv["command"] and can_use_cli(drv["command"]):
-            click.echo(f"🤖 自动调用 {decompose_agent} CLI 进行任务分解…")
-            spawn_cli_agent(decompose_agent, "decompose", drv["command"], timeout_sec=timeout)
-
-        click.echo("👁️  等待任务分解结果… (Ctrl-C 停止)")
-        deadline = time.time() + timeout
-        try:
-            while result is None:
-                result = read_decompose_result()
-                if result:
-                    break
-                if time.time() > deadline:
-                    click.echo(f"❌ 任务分解超时 ({timeout}s)。", err=True)
-                    release_lock()
-                    clear_runtime()
-                    sys.exit(1)
-                time.sleep(2)
-        except KeyboardInterrupt:
-            click.echo("\n⏹️  Decomposition stopped.")
-            release_lock()
-            clear_runtime()
-            return None
+        result = _wait_for_decompose_agent(requirement, builder, timeout)
 
     # Cache the result for future re-use
-    if not decompose_file and not no_cache:
+    if result and not decompose_file and not no_cache:
         from multi_agent.decompose import cache_decompose
         try:
             cache_decompose(requirement, result, skill_id=skill)
@@ -354,6 +365,70 @@ def _retry_sub_task(
     return _collect_sub_result(app, sub_config, st, sub_start)
 
 
+def _validate_and_sort(
+    decompose_result: Any, release_lock_fn: Any, clear_runtime_fn: Any,
+) -> Any | None:
+    """Validate and topologically sort sub-tasks. Returns sorted list or None if empty."""
+    from multi_agent.decompose import topo_sort, validate_decompose_result
+
+    validation_errors = validate_decompose_result(decompose_result)
+    if validation_errors:
+        click.echo("⚠️  分解结果存在问题:", err=True)
+        for ve in validation_errors:
+            click.echo(f"   - {ve}", err=True)
+
+    try:
+        sorted_tasks = topo_sort(decompose_result.sub_tasks)
+    except ValueError as e:
+        click.echo(f"❌ 分解结果无效: {e}", err=True)
+        release_lock_fn()
+        clear_runtime_fn()
+        sys.exit(1)
+
+    return sorted_tasks if sorted_tasks else None
+
+
+def _display_sub_tasks(decompose_result: Any, sorted_tasks: Any) -> None:
+    """Display decomposed sub-tasks with parallel group info."""
+    from multi_agent.decompose import topo_sort_grouped
+
+    click.echo(f"\n✅ 分解完成: {len(sorted_tasks)} 个子任务")
+    if decompose_result.reasoning:
+        click.echo(f"   理由: {decompose_result.reasoning}")
+
+    try:
+        groups = topo_sort_grouped(decompose_result.sub_tasks)
+        for gi, group in enumerate(groups, 1):
+            ids = ", ".join(st.id for st in group)
+            if len(group) > 1:
+                click.echo(f"   组 {gi} (可并行): {ids}")
+            else:
+                click.echo(f"   组 {gi}: {ids}")
+    except ValueError:
+        for i, st in enumerate(sorted_tasks, 1):
+            deps_str = f" (依赖: {', '.join(st.deps)})" if st.deps else ""
+            click.echo(f"   {i}. {st.id}: {st.description}{deps_str}")
+    click.echo()
+
+
+def _load_decompose_checkpoint(
+    parent_task_id: str,
+) -> tuple[list[dict[str, Any]], set[str], set[str]]:
+    """Load checkpoint for crash recovery. Returns (prior_results, completed_ids, failed_ids)."""
+    from multi_agent.meta_graph import load_checkpoint
+
+    ckpt = load_checkpoint(parent_task_id)
+    prior_results: list[dict[str, Any]] = ckpt["prior_results"] if ckpt else []
+    completed_ids: set[str] = set(ckpt["completed_ids"]) if ckpt else set()
+    failed_ids: set[str] = set()
+    if ckpt:
+        click.echo(f"💾 恢复 checkpoint: {len(completed_ids)} 个子任务已完成")
+        for pr in prior_results:
+            if pr.get("status") not in ("approved", "completed", "skipped"):
+                failed_ids.add(pr["sub_id"])
+    return prior_results, completed_ids, failed_ids
+
+
 def _run_decomposed(
     app,
     parent_task_id,
@@ -393,68 +468,25 @@ def _run_decomposed(
     if decompose_result is None:
         return
 
-    # Task 20: Validate decompose result structure
-    from multi_agent.decompose import validate_decompose_result
-    validation_errors = validate_decompose_result(decompose_result)
-    if validation_errors:
-        click.echo("⚠️  分解结果存在问题:", err=True)
-        for ve in validation_errors:
-            click.echo(f"   - {ve}", err=True)
-
-    # Phase 2: Sort sub-tasks by dependencies
-    try:
-        sorted_tasks = topo_sort(decompose_result.sub_tasks)
-    except ValueError as e:
-        click.echo(f"❌ 分解结果无效: {e}", err=True)
-        release_lock()
-        clear_runtime()
-        sys.exit(1)
-
-    if not sorted_tasks:
+    # Phase 2: Validate, sort, display, confirm
+    sorted_tasks = _validate_and_sort(decompose_result, release_lock, clear_runtime)
+    if sorted_tasks is None:
         click.echo("⚠️  分解结果为空，降级为单任务模式")
         _run_single_task(app, parent_task_id, requirement, skill, builder, reviewer,
                          retry_budget, timeout, no_watch, workflow_mode, review_policy)
         return
 
-    click.echo(f"\n✅ 分解完成: {len(sorted_tasks)} 个子任务")
-    if decompose_result.reasoning:
-        click.echo(f"   理由: {decompose_result.reasoning}")
+    _display_sub_tasks(decompose_result, sorted_tasks)
 
-    # Task 19: Show parallel group info
-    try:
-        groups = topo_sort_grouped(decompose_result.sub_tasks)
-        for gi, group in enumerate(groups, 1):
-            ids = ", ".join(st.id for st in group)
-            if len(group) > 1:
-                click.echo(f"   组 {gi} (可并行): {ids}")
-            else:
-                click.echo(f"   组 {gi}: {ids}")
-    except ValueError:
-        for i, st in enumerate(sorted_tasks, 1):
-            deps_str = f" (依赖: {', '.join(st.deps)})" if st.deps else ""
-            click.echo(f"   {i}. {st.id}: {st.description}{deps_str}")
-    click.echo()
-
-    # Task 28: Confirmation step before execution
     if not auto_confirm:
         if not click.confirm("确认执行这些子任务？", default=True):
             click.echo("⏹️  已取消。可修改 .multi-agent/outbox/decompose.json 后重新运行。")
             release_lock()
             return
 
-    # Phase 3: Execute each sub-task sequentially
-    # C2: Load checkpoint for crash recovery (MAS-FIRE 2026 fault tolerance)
+    # Phase 3: Load checkpoint for crash recovery
     from multi_agent.meta_graph import clear_checkpoint, load_checkpoint, save_checkpoint
-    ckpt = load_checkpoint(parent_task_id)
-    prior_results: list[dict[str, Any]] = ckpt["prior_results"] if ckpt else []
-    completed_ids: set[str] = set(ckpt["completed_ids"]) if ckpt else set()
-    failed_ids: set[str] = set()  # track failed sub-task IDs for dep skipping
-    if ckpt:
-        click.echo(f"💾 恢复 checkpoint: {len(completed_ids)} 个子任务已完成")
-        # Rebuild failed_ids from prior_results
-        for pr in prior_results:
-            if pr.get("status") not in ("approved", "completed", "skipped"):
-                failed_ids.add(pr["sub_id"])
+    prior_results, completed_ids, failed_ids = _load_decompose_checkpoint(parent_task_id)
 
     total = len(sorted_tasks)
     decompose_start = time.time()
