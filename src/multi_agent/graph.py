@@ -373,7 +373,7 @@ def _graph_node(node_name: str):
                 _log.exception("%s failed: %s", node_name, e)
                 graph_hooks.fire_error(node_name, state, e)
                 return {
-                    "error": f"{node_name}: {e}",
+                    "error": f"{node_name}_node: {e}",
                     "final_status": "failed",
                     "conversation": [
                         {"role": "orchestrator", "action": "internal_error",
@@ -1288,3 +1288,14 @@ def compile_graph(*, db_path: str | None = None):
         compiled = g.compile(checkpointer=checkpointer)
         _compiled_cache[path] = compiled
         return compiled
+
+
+# ── Backward-compatible aliases for test code ────────────
+# The @_graph_node decorator merged *_node and _*_node_inner into a single
+# decorated function.  functools.wraps preserves __wrapped__ pointing to the
+# original inner function.  Expose _*_node_inner names so existing tests that
+# call the inner logic directly (bypassing timing/stats) keep working.
+_plan_node_inner = plan_node.__wrapped__     # type: ignore[attr-defined]
+_build_node_inner = build_node.__wrapped__   # type: ignore[attr-defined]
+_review_node_inner = review_node.__wrapped__ # type: ignore[attr-defined]
+_decide_node_inner = decide_node.__wrapped__ # type: ignore[attr-defined]
