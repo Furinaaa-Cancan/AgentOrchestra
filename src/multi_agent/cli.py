@@ -99,9 +99,6 @@ def _log_error_to_file(command: str, error: Exception):
         pass
 
 
-def _thread_id(task_id: str) -> str:
-    return task_id
-
 
 def _make_config(task_id: str) -> dict:
     from multi_agent.orchestrator import make_config
