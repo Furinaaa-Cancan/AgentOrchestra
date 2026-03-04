@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
@@ -250,6 +251,8 @@ class DecomposeResult(BaseModel):
 # ── Agent Profile ─────────────────────────────────────────
 
 class AgentProfile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: str = Field(..., pattern=r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
     driver: str = "file"  # "file" (IDE, manual) or "cli" (auto-spawn)
     command: str = ""      # CLI command template (for driver="cli")
@@ -257,3 +260,61 @@ class AgentProfile(BaseModel):
     reliability: float = 0.9
     queue_health: float = 0.9
     cost: float = 0.5
+
+
+# ── Conversation Events ──────────────────────────────────
+#
+# Type-safe event definitions for the conversation log.
+# Previously all events were untyped dicts with ad-hoc keys,
+# making it impossible to detect typos or missing fields at
+# validation time (architecture review defect B3).
+
+
+class ConversationAction(str, Enum):
+    """All valid orchestrator/agent actions in the conversation log."""
+    ASSIGNED = "assigned"
+    APPROVED = "approved"
+    RETRY = "retry"
+    REQUEST_CHANGES = "request_changes"
+    ESCALATED = "escalated"
+    CANCELLED = "cancelled"
+    TIMEOUT = "timeout"
+    TOTAL_TIMEOUT = "total_timeout"
+    INTERNAL_ERROR = "internal_error"
+    RUBBER_STAMP_WARNING = "rubber_stamp_warning"
+    TERMINAL_PASSTHROUGH = "terminal_passthrough"
+    PRECONDITION_FAILED = "precondition_failed"
+
+
+class ConversationEvent(BaseModel):
+    """A single entry in the workflow conversation log.
+
+    Replaces the untyped ``dict`` pattern used throughout graph.py.
+    Constructed via the ``make_event`` factory for backward compatibility
+    with existing code that expects plain dicts.
+    """
+    model_config = ConfigDict(extra="allow")
+
+    role: str
+    t: float = Field(default_factory=time.time)
+    # Fields that appear depending on event type:
+    action: str | None = None
+    decision: str | None = None
+    output: str | None = None
+    details: Any = None
+    agent: str | None = None
+    feedback: str | None = None
+    node: str | None = None
+    elapsed: int | None = None
+    reviewer_id: str | None = None
+
+
+def make_event(role: str, *, action: str | None = None, **kwargs: Any) -> dict[str, Any]:
+    """Create a conversation event dict with timestamp and validation.
+
+    Returns a plain dict for backward compatibility with LangGraph state
+    (which uses ``list[dict]``), while providing construction-time validation.
+    """
+    evt = ConversationEvent(role=role, action=action, **kwargs)
+    # Export as dict, dropping None values for compact storage
+    return {k: v for k, v in evt.model_dump().items() if v is not None}
