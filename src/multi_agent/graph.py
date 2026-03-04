@@ -47,8 +47,8 @@ class GraphStats:
     """Collect graph execution statistics per node."""
 
     def __init__(self):
-        self._stats: dict[str, dict] = {}
-        self._retry_outcomes: list[dict] = []
+        self._stats: dict[str, dict[str, Any]] = {}
+        self._retry_outcomes: list[dict[str, Any]] = []
 
     def record(self, node: str, duration_ms: int, success: bool) -> None:
         if node not in self._stats:
@@ -63,7 +63,7 @@ class GraphStats:
         """Track retry effectiveness per round (DDI measurement, Nature 2025)."""
         self._retry_outcomes.append({"round": retry_round, "decision": decision})
 
-    def record_token_usage(self, node: str, usage: dict) -> None:
+    def record_token_usage(self, node: str, usage: dict[str, Any]) -> None:
         """Track token usage from IDE driver output (FinOps, Zylos 2026).
 
         ``usage`` may contain: input_tokens, output_tokens, total_tokens, cost.
@@ -80,7 +80,7 @@ class GraphStats:
         if isinstance(cost, (int, float)):
             s["cost"] = round(s.get("cost", 0.0) + float(cost), 6)
 
-    def summary(self) -> dict[str, dict]:
+    def summary(self) -> dict[str, dict[str, Any]]:
         result = {}
         for node, s in self._stats.items():
             avg = s["total_ms"] / s["count"] if s["count"] else 0
@@ -177,7 +177,7 @@ def log_timing(task_id: str, node: str, start: float, end: float) -> None:
         pass
 
 
-def trim_conversation(conversation: list[dict]) -> list[dict]:
+def trim_conversation(conversation: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Keep conversation within MAX_CONVERSATION_SIZE, preserving first and last entries.
 
     NOTE: This trims a *local copy* used for prompt rendering, dashboard display,
@@ -215,7 +215,7 @@ def trim_conversation(conversation: list[dict]) -> list[dict]:
     return conversation[:keep_head] + [trimmed_marker] + conversation[-keep_tail:]
 
 
-def save_state_snapshot(task_id: str, node_name: str, state: dict) -> None:
+def save_state_snapshot(task_id: str, node_name: str, state: dict[str, Any]) -> None:
     """Save a state snapshot for debugging. Keeps only the latest MAX_SNAPSHOTS."""
     from multi_agent.config import workspace_dir as _ws_dir
     snap_dir = _ws_dir() / "snapshots"
@@ -346,7 +346,7 @@ def _graph_node(node_name: str):
 
     def decorator(inner_fn):
         @functools.wraps(inner_fn)
-        def wrapper(state: "WorkflowState") -> dict:
+        def wrapper(state: "WorkflowState") -> dict[str, Any]:
             _t0 = time.time()
             _ok = False
             try:
@@ -404,8 +404,8 @@ class WorkflowState(TypedDict, total=False):
     reviewer_id: str           # IDE name filling reviewer role (e.g. "cursor")
     builder_explicit: str      # user-specified builder (from --builder flag)
     reviewer_explicit: str     # user-specified reviewer (from --reviewer flag)
-    builder_output: dict | None
-    reviewer_output: dict | None
+    builder_output: dict[str, Any] | None
+    reviewer_output: dict[str, Any] | None
     retry_count: int
     retry_budget: int
     started_at: float
@@ -414,7 +414,7 @@ class WorkflowState(TypedDict, total=False):
     review_started_at: float | None
 
     # Accumulate
-    conversation: Annotated[list[dict], add]
+    conversation: Annotated[list[dict[str, Any]], add]
 
     # Hierarchy
     parent_task_id: str | None
@@ -502,7 +502,7 @@ def _write_task_md(state: Mapping[str, Any], builder_id: str, reviewer_id: str, 
 # ── Node 1: Plan ──────────────────────────────────────────
 
 @_graph_node("plan")
-def plan_node(state: WorkflowState) -> dict:
+def plan_node(state: WorkflowState) -> dict[str, Any]:
     graph_hooks.fire_enter("plan", state)
 
     # Reset stats on first run of a new task to prevent cross-task contamination
@@ -614,7 +614,7 @@ def plan_node(state: WorkflowState) -> dict:
 # ── Node 2: Build ─────────────────────────────────────────
 
 @_graph_node("build")
-def build_node(state: WorkflowState) -> dict:
+def build_node(state: WorkflowState) -> dict[str, Any]:
     graph_hooks.fire_enter("build", state)
 
     # Total task duration guard (OWASP LLM10:2025 — DoW prevention)
@@ -778,7 +778,7 @@ def build_node(state: WorkflowState) -> dict:
 # ── Node 3: Review ────────────────────────────────────────
 
 @_graph_node("review")
-def review_node(state: WorkflowState) -> dict:
+def review_node(state: WorkflowState) -> dict[str, Any]:
     graph_hooks.fire_enter("review", state)
 
     # Total task duration guard (OWASP LLM10:2025 — DoW prevention)
@@ -895,7 +895,7 @@ def review_node(state: WorkflowState) -> dict:
 # ── Node 4: Decide ────────────────────────────────────────
 
 @_graph_node("decide")
-def decide_node(state: WorkflowState) -> dict:
+def decide_node(state: WorkflowState) -> dict[str, Any]:
     graph_hooks.fire_enter("decide", state)
 
     # Early exit if state is already terminal (e.g., review_node detected cancellation
@@ -961,7 +961,7 @@ def decide_node(state: WorkflowState) -> dict:
     if decision == "approve":
         # C1: Check rubber-stamp warning from review_node (MAST NeurIPS 2025 TV-1).
         # If reviewer approved without substantive reasoning, record audit trail.
-        convo_entries: list[dict] = []
+        convo_entries: list[dict[str, Any]] = []
         if rubber_stamp:
             _log.warning(
                 "Task %s approved with rubber-stamp warning — review may lack "
@@ -1174,7 +1174,7 @@ def route_decision(state: WorkflowState) -> str:
 
 # ── Graph Assembly ────────────────────────────────────────
 
-def build_graph() -> StateGraph:
+def build_graph() -> StateGraph:  # type: ignore[type-arg]
     """Build the 4-node LangGraph workflow (uncompiled)."""
     g = StateGraph(WorkflowState)
 

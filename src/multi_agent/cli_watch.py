@@ -11,6 +11,7 @@ These are re-exported from cli.py to preserve existing mock paths.
 from __future__ import annotations
 
 import time
+from typing import Any
 
 import click
 
@@ -28,7 +29,7 @@ from multi_agent.workspace import (
 )
 
 
-def _normalize_resume_output(role: str, data: dict, state_values: dict) -> dict:
+def _normalize_resume_output(role: str, data: dict[str, Any], state_values: dict[str, Any]) -> dict[str, Any]:
     """Normalize/validate resume payload for legacy go/watch/done path."""
     if role != "reviewer":
         return data

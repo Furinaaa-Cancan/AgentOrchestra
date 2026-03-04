@@ -22,7 +22,7 @@ def trace_file(task_id: str) -> Path:
     return history_dir() / f"{task_id}.events.jsonl"
 
 
-def _read_last_event_id_from_handle(handle) -> str | None:
+def _read_last_event_id_from_handle(handle: Any) -> str | None:
     handle.seek(0)
     last = None
     for line in handle:

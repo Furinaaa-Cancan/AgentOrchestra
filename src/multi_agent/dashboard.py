@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from multi_agent.config import dashboard_path
 
@@ -17,7 +18,7 @@ def generate_dashboard(
     done_criteria: list[str],
     current_agent: str,
     current_role: str,
-    conversation: list[dict],
+    conversation: list[dict[str, Any]],
     status_msg: str = "",
     timeout_remaining: str = "",
     error: str | None = None,
@@ -77,7 +78,7 @@ def write_dashboard(
     done_criteria: list[str],
     current_agent: str,
     current_role: str,
-    conversation: list[dict],
+    conversation: list[dict[str, Any]],
     status_msg: str = "",
     timeout_remaining: str = "",
     error: str | None = None,

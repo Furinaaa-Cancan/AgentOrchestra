@@ -12,6 +12,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -89,7 +90,7 @@ def _log_error_to_file(command: str, error: Exception):
 
 
 
-def _make_config(task_id: str) -> dict:
+def _make_config(task_id: str) -> dict[str, Any]:
     from multi_agent.orchestrator import make_config
     return make_config(task_id)
 

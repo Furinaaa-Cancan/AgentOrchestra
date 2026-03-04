@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from typing import Any
 
 from multi_agent.config import outbox_dir
 
@@ -64,9 +65,9 @@ class OutboxPoller:
             prev_size = cur_size
         return False  # still changing after max_wait
 
-    def check_once(self) -> list[tuple[str, dict]]:
+    def check_once(self) -> list[tuple[str, dict[str, Any]]]:
         """Check for new or updated outbox files. Returns [(role, data), ...]."""
-        results: list[tuple[str, dict]] = []
+        results: list[tuple[str, dict[str, Any]]] = []
         for role, path in self._scan().items():
             try:
                 stat = path.stat()
@@ -108,7 +109,7 @@ class OutboxPoller:
                     pass  # Partial write — retry on next poll
         return results
 
-    def watch(self, callback, *, stop_after: int | None = None):
+    def watch(self, callback: Any, *, stop_after: int | None = None) -> None:
         """Poll loop. Calls ``callback(role, data)`` for each new outbox file.
 
         Uses adaptive polling: shortens interval after activity, lengthens after idle.

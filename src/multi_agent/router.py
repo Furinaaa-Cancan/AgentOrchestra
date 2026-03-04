@@ -25,7 +25,7 @@ def _agents_yaml_path() -> Path:
     return root_dir() / "agents" / "agents.yaml"
 
 
-def load_registry(path: Path | None = None) -> dict:
+def load_registry(path: Path | None = None) -> dict[str, Any]:
     """Load agents.yaml v2 registry. Falls back to profiles.json."""
     yaml_path = path or _agents_yaml_path()
     if yaml_path.exists():
@@ -202,14 +202,14 @@ def _eligible(
     return candidates
 
 
-def check_agent_health(agents: list[AgentProfile]) -> list[dict]:
+def check_agent_health(agents: list[AgentProfile]) -> list[dict[str, Any]]:
     """Check health of all registered agents.
 
     Returns list of {id, status, issues} for each agent.
     Also warns about cross-model diversity for adversarial review effectiveness
     (literature: Brilliant 2026, correlated error theory).
     """
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
     for agent in agents:
         issues: list[str] = []
         if agent.reliability < 0.5:

@@ -6,6 +6,7 @@ import logging
 import warnings
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -87,7 +88,7 @@ def render_builder_prompt(
 MAX_BUILDER_SUMMARY_CHARS = 3000
 
 
-def _sanitize_builder_output(output: dict) -> dict:
+def _sanitize_builder_output(output: dict[str, Any]) -> dict[str, Any]:
     """Sanitize builder output before embedding into reviewer prompt.
 
     Prevents inter-agent prompt injection (Agents Under Siege, UNC 2025;
@@ -112,7 +113,7 @@ def render_reviewer_prompt(
     task: Task,
     contract: SkillContract,
     agent_id: str,
-    builder_output: dict,
+    builder_output: dict[str, Any],
     builder_id: str,
 ) -> str:
     """Render the reviewer prompt from skill-specific or generic template."""

@@ -23,7 +23,7 @@ from multi_agent.schema import SubTask
 _log = logging.getLogger(__name__)
 
 
-def save_checkpoint(parent_task_id: str, prior_results: list[dict],
+def save_checkpoint(parent_task_id: str, prior_results: list[dict[str, Any]],
                     completed_ids: list[str]) -> Path:
     """Persist decompose progress to disk for crash recovery (MAS-FIRE 2026).
 
@@ -43,7 +43,7 @@ def save_checkpoint(parent_task_id: str, prior_results: list[dict],
     return ckpt_path
 
 
-def load_checkpoint(parent_task_id: str) -> dict | None:
+def load_checkpoint(parent_task_id: str) -> dict[str, Any] | None:
     """Load decompose checkpoint if it exists. Returns None if no checkpoint."""
     from multi_agent.config import workspace_dir
     ckpt_path = workspace_dir() / "checkpoints" / f"decompose-{parent_task_id}.json"
@@ -95,7 +95,7 @@ def generate_sub_task_id(parent_task_id: str, sub_id: str) -> str:
 
 
 def format_prior_context(
-    prior_results: list[dict],
+    prior_results: list[dict[str, Any]],
     max_items: int = 3,
     dep_ids: list[str] | None = None,
 ) -> str:
@@ -113,7 +113,7 @@ def format_prior_context(
 
     dep_set = set(dep_ids or [])
     # Include: all dependency results + most recent max_items (deduplicated)
-    selected: list[dict] = []
+    selected: list[dict[str, Any]] = []
     seen: set[str] = set()
     # Dependency results first (may be older)
     for pr in prior_results:
@@ -148,7 +148,7 @@ def build_sub_task_state(
     reviewer: str = "",
     timeout: int = 1800,
     retry_budget: int = 2,
-    prior_results: list[dict] | None = None,
+    prior_results: list[dict[str, Any]] | None = None,
     workflow_mode: str = "strict",
     review_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -191,7 +191,7 @@ def build_sub_task_state(
 
 def aggregate_results(
     parent_task_id: str,
-    sub_results: list[dict],
+    sub_results: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Aggregate results from all completed sub-tasks into a summary."""
     all_files = []
@@ -244,7 +244,7 @@ def aggregate_results(
     }
 
 
-def generate_aggregate_report(agg: dict) -> str:
+def generate_aggregate_report(agg: dict[str, Any]) -> str:
     """Generate a Markdown report from aggregated sub-task results.
 
     Task 26: Returns formatted Markdown with summary table and file list.

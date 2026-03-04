@@ -511,7 +511,7 @@ def topo_sort(sub_tasks: list[SubTask]) -> list[SubTask]:
     result: list[SubTask] = []
     visiting: set[str] = set()
 
-    def visit(task_id: str):
+    def visit(task_id: str) -> None:
         if task_id in visited:
             return
         if task_id in visiting:

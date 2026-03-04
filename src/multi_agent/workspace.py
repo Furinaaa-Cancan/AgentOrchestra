@@ -10,6 +10,7 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 from multi_agent.config import (
     history_dir,
@@ -25,7 +26,7 @@ FILE_OP_RETRIES = 3
 FILE_OP_DELAY = 0.1
 
 
-def retry_file_op(retries: int = FILE_OP_RETRIES, delay: float = FILE_OP_DELAY):
+def retry_file_op(retries: int = FILE_OP_RETRIES, delay: float = FILE_OP_DELAY):  # type: ignore[misc]
     """Retry decorator for file operations that may fail due to transient OS errors.
 
     Uses exponential backoff with jitter to avoid thundering-herd on shared
@@ -78,7 +79,7 @@ def write_inbox(agent_id: str, content: str) -> Path:
     return path
 
 
-def validate_outbox_data(role: str, data: dict) -> list[str]:
+def validate_outbox_data(role: str, data: dict[str, Any]) -> list[str]:
     """Validate outbox data for a given role. Returns list of errors (empty = valid)."""
     errors: list[str] = []
     if role == "builder":
@@ -92,7 +93,7 @@ def validate_outbox_data(role: str, data: dict) -> list[str]:
     return errors
 
 
-def read_outbox(agent_id: str, *, validate: bool = False) -> dict | None:
+def read_outbox(agent_id: str, *, validate: bool = False) -> dict[str, Any] | None:
     """Read and parse outbox/{agent_id}.json. Returns None if not found or corrupt.
 
     When validate=True, checks that the data has required fields for the role.
@@ -126,7 +127,7 @@ def read_outbox(agent_id: str, *, validate: bool = False) -> dict | None:
 
 
 @retry_file_op()
-def write_outbox(agent_id: str, data: dict) -> Path:
+def write_outbox(agent_id: str, data: dict[str, Any]) -> Path:
     """Write agent output to outbox/{agent_id}.json.
 
     D2: Uses atomic write (temp file + os.replace) to prevent the watcher
@@ -164,7 +165,7 @@ def clear_inbox(agent_id: str) -> None:
 
 
 @retry_file_op()
-def save_task_yaml(task_id: str, data: dict) -> Path:
+def save_task_yaml(task_id: str, data: dict[str, Any]) -> Path:
     """Save task state to tasks/{task_id}.yaml."""
     import yaml
 
@@ -295,7 +296,7 @@ def check_workspace_health() -> list[str]:
     return issues
 
 
-def get_workspace_stats() -> dict:
+def get_workspace_stats() -> dict[str, Any]:
     """Get workspace size statistics."""
     ws = workspace_dir()
     if not ws.exists():
@@ -366,7 +367,7 @@ def cleanup_old_files(max_age_days: int = 7) -> int:
 
 
 @retry_file_op()
-def archive_conversation(task_id: str, conversation: list[dict]) -> Path:
+def archive_conversation(task_id: str, conversation: list[dict[str, Any]]) -> Path:
     """Archive conversation history to history/{task_id}.json."""
     ensure_workspace()
     path = history_dir() / f"{task_id}.json"

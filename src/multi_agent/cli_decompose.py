@@ -11,6 +11,7 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -173,7 +174,7 @@ def _run_decomposed(
     # C2: Load checkpoint for crash recovery (MAS-FIRE 2026 fault tolerance)
     from multi_agent.meta_graph import clear_checkpoint, load_checkpoint, save_checkpoint
     ckpt = load_checkpoint(parent_task_id)
-    prior_results: list[dict] = ckpt["prior_results"] if ckpt else []
+    prior_results: list[dict[str, Any]] = ckpt["prior_results"] if ckpt else []
     completed_ids: set[str] = set(ckpt["completed_ids"]) if ckpt else set()
     failed_ids: set[str] = set()  # track failed sub-task IDs for dep skipping
     if ckpt:

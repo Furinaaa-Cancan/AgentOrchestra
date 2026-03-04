@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -88,7 +89,7 @@ def dashboard_path() -> Path:
     return workspace_dir() / "dashboard.md"
 
 
-def load_yaml(path: Path) -> dict:
+def load_yaml(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
@@ -100,7 +101,7 @@ VALID_CONFIG_KEYS = {
 }
 
 
-def validate_config(data: dict) -> list[str]:
+def validate_config(data: dict[str, Any]) -> list[str]:
     """Validate .ma.yaml config structure. Returns list of warnings."""
     warnings_list: list[str] = []
     unknown = set(data.keys()) - VALID_CONFIG_KEYS
@@ -124,7 +125,7 @@ def validate_config(data: dict) -> list[str]:
     return warnings_list
 
 
-def load_project_config() -> dict:
+def load_project_config() -> dict[str, Any]:
     """Load optional .ma.yaml project-level config from project root.
 
     Returns empty dict if file doesn't exist or is malformed.
@@ -175,9 +176,9 @@ class ProjectSettings:
     defaults and duplicated loading logic across cli.py, session.py, graph.py.
     """
 
-    def __init__(self, *, overrides: dict | None = None, mode: str | None = None):
+    def __init__(self, *, overrides: dict[str, Any] | None = None, mode: str | None = None):
         # Layer 4: hardcoded defaults
-        self._merged: dict = dict(_DEFAULTS)
+        self._merged: dict[str, Any] = dict(_DEFAULTS)
 
         # Layer 3: workmode.yaml mode defaults
         mode = mode or self._merged.get("workflow_mode", "strict")
@@ -209,15 +210,15 @@ class ProjectSettings:
                 if v is not None and v != "":
                     self._merged[k] = v
 
-    def get(self, key: str, default=None):
+    def get(self, key: str, default: Any = None) -> Any:
         return self._merged.get(key, default)
 
-    def __getitem__(self, key: str):
+    def __getitem__(self, key: str) -> Any:
         return self._merged[key]
 
     def __contains__(self, key: str) -> bool:
         return key in self._merged
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> dict[str, Any]:
         """Return a copy of the merged configuration."""
         return dict(self._merged)

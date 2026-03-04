@@ -18,7 +18,7 @@ import subprocess
 import tempfile
 import threading
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from multi_agent.config import outbox_dir, workspace_dir
 
@@ -52,7 +52,7 @@ _cli_lock = threading.Lock()
 _active_agents: dict[str, threading.Thread] = {}
 
 
-def get_agent_driver(agent_id: str) -> dict:
+def get_agent_driver(agent_id: str) -> dict[str, Any]:
     """Look up driver config for an agent from agents.yaml."""
     from multi_agent.router import load_agents
 
@@ -83,7 +83,7 @@ def can_use_cli(command_template: str) -> bool:
     return shutil.which(binary) is not None
 
 
-def _stream_stdout(proc: subprocess.Popen, agent_id: str, role: str) -> str:
+def _stream_stdout(proc: subprocess.Popen[str], agent_id: str, role: str) -> str:
     """Read stdout line-by-line, print in real-time, return accumulated text."""
     lines: list[str] = []
     if proc.stdout:
@@ -104,7 +104,7 @@ def classify_stderr(text: str) -> str:
     return "info"
 
 
-def _stream_stderr(proc: subprocess.Popen, agent_id: str, role: str) -> str:
+def _stream_stderr(proc: subprocess.Popen[str], agent_id: str, role: str) -> str:
     """Read stderr line-by-line, log in real-time with severity, write to log file, return accumulated text."""
     import time as _time
     lines: list[str] = []
@@ -254,7 +254,7 @@ def spawn_cli_agent(
     return t
 
 
-def _atomic_write_json(path: Path, data: dict) -> None:
+def _atomic_write_json(path: Path, data: dict[str, Any]) -> None:
     """Write JSON atomically via temp file + os.replace (D3)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
