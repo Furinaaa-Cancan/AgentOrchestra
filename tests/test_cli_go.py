@@ -241,7 +241,7 @@ class TestGoCommand:
              patch("multi_agent.cli._detect_active_task", return_value=None), \
              patch("multi_agent.cli.clear_runtime"), \
              patch("multi_agent.cli.acquire_lock"), \
-             patch("multi_agent.cli._run_decomposed") as rd:
+             patch("multi_agent.cli_decompose._run_decomposed") as rd:
             result = runner.invoke(main, ["go", "complex task", "--decompose", "--no-watch"])
         assert result.exit_code == 0
         rd.assert_called_once()
@@ -262,7 +262,7 @@ class TestGoCommand:
              patch("multi_agent.cli._detect_active_task", return_value=None), \
              patch("multi_agent.cli.clear_runtime"), \
              patch("multi_agent.cli.acquire_lock"), \
-             patch("multi_agent.cli._run_decomposed") as rd:
+             patch("multi_agent.cli_decompose._run_decomposed") as rd:
             result = runner.invoke(main, [
                 "go", "test", "--decompose-file", str(yaml_file),
                 "--task-id", "task-yaml-test",

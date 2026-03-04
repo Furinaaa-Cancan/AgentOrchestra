@@ -99,7 +99,7 @@ class TestGoDecomposeFlag:
         result = runner.invoke(main, ["go", "--help"])
         assert "--decompose" in result.output
 
-    @patch("multi_agent.cli._run_decomposed")
+    @patch("multi_agent.cli_decompose._run_decomposed")
     @patch("multi_agent.graph.compile_graph")
     def test_decompose_flag_calls_run_decomposed(self, mock_compile, mock_decomposed, workspace):
         mock_app = MagicMock()
@@ -229,14 +229,14 @@ class TestUserChoiceOnFailure:
         """The choice set should include 'retry' alongside skip and abort."""
         # Just verify the source code has all three choices
         import inspect
-        from multi_agent.cli import _run_decomposed
+        from multi_agent.cli_decompose import _run_decomposed
         src = inspect.getsource(_run_decomposed)
         assert '"skip", "retry", "abort"' in src or "'skip', 'retry', 'abort'" in src
 
     def test_auto_confirm_skips_choice(self):
         """When auto_confirm=True, failed sub-tasks should be auto-skipped (no prompt)."""
         import inspect
-        from multi_agent.cli import _run_decomposed
+        from multi_agent.cli_decompose import _run_decomposed
         src = inspect.getsource(_run_decomposed)
         assert "auto_confirm" in src
         assert "click.prompt" in src
@@ -250,7 +250,7 @@ class TestNoCacheFlag:
         result = runner.invoke(main, ["go", "--help"])
         assert "--no-cache" in result.output
 
-    @patch("multi_agent.cli._run_decomposed")
+    @patch("multi_agent.cli_decompose._run_decomposed")
     @patch("multi_agent.graph.compile_graph")
     def test_no_cache_passed_to_run_decomposed(self, mock_compile, mock_decomposed, workspace):
         mock_app = MagicMock()
