@@ -227,17 +227,17 @@ class TestUserChoiceOnFailure:
 
     def test_choice_includes_retry(self):
         """The choice set should include 'retry' alongside skip and abort."""
-        # Just verify the source code has all three choices
+        # Verify the _handle_failure method has all three choices
         import inspect
-        from multi_agent.cli_decompose import _run_decomposed
-        src = inspect.getsource(_run_decomposed)
+        from multi_agent.cli_decompose import _DecomposeExecContext
+        src = inspect.getsource(_DecomposeExecContext._handle_failure)
         assert '"skip", "retry", "abort"' in src or "'skip', 'retry', 'abort'" in src
 
     def test_auto_confirm_skips_choice(self):
         """When auto_confirm=True, failed sub-tasks should be auto-skipped (no prompt)."""
         import inspect
-        from multi_agent.cli_decompose import _run_decomposed
-        src = inspect.getsource(_run_decomposed)
+        from multi_agent.cli_decompose import _DecomposeExecContext
+        src = inspect.getsource(_DecomposeExecContext._handle_failure)
         assert "auto_confirm" in src
         assert "click.prompt" in src
 
