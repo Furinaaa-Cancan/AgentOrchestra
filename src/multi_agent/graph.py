@@ -611,6 +611,56 @@ def plan_node(state: WorkflowState) -> dict[str, Any]:
     return result
 
 
+def _validate_builder_output(result: Any) -> dict[str, Any] | None:
+    """Validate builder output structure. Returns error dict or None if valid."""
+    errors: list[str] = []
+    if not isinstance(result, dict):
+        errors.append("output must be a JSON object")
+    else:
+        if "status" not in result:
+            errors.append("missing 'status' field")
+        if "summary" not in result:
+            errors.append("missing 'summary' field")
+        if "changed_files" in result and not isinstance(result["changed_files"], list):
+            errors.append("'changed_files' must be a list")
+        if "check_results" in result and not isinstance(result["check_results"], dict):
+            errors.append("'check_results' must be a dict")
+    if errors:
+        return {
+            "error": f"Builder output invalid: {'; '.join(errors)}",
+            "final_status": "failed",
+            "conversation": [{"role": "builder", "output": "INVALID", "t": time.time()}],
+        }
+    return None
+
+
+def _enrich_builder_result(result: dict[str, Any], state: "WorkflowState") -> None:
+    """Add semantic warnings and quality gate checks to builder result (in-place)."""
+    # C3: Semantic validation — completed with no changed_files is suspicious
+    builder_status = str(result.get("status", "")).lower()
+    changed_files = result.get("changed_files", [])
+    if builder_status in ("completed", "success", "done") and not changed_files:
+        _log.warning(
+            "Builder claims '%s' but reported no changed_files — "
+            "forwarding to reviewer with warning.", builder_status,
+        )
+        result.setdefault("_empty_changeset_warning", True)
+
+    # A4: Quality gate enforcement
+    skill_id = state["skill_id"]
+    contract = load_contract(skill_id)
+    check_results = result.get("check_results", {})
+    gate_warnings: list[str] = []
+    for gate in contract.quality_gates:
+        gate_result = check_results.get(gate)
+        if gate_result is None:
+            gate_warnings.append(f"quality gate '{gate}' not reported")
+        elif str(gate_result).lower() not in ("pass", "passed", "ok", "success", "true"):
+            gate_warnings.append(f"quality gate '{gate}' failed: {gate_result}")
+    if gate_warnings:
+        result.setdefault("gate_warnings", gate_warnings)
+
+
 # ── Node 2: Build ─────────────────────────────────────────
 
 @_graph_node("build")
@@ -665,27 +715,10 @@ def build_node(state: WorkflowState) -> dict[str, Any]:
                 "conversation": [{"role": "orchestrator", "action": "timeout", "elapsed": int(elapsed), "t": time.time()}],
             }
 
-    # Validate builder output (structured output enforcement — Lanham 2026, ACL 2025)
-    errors: list[str] = []
-    if not isinstance(result, dict):
-        errors.append("output must be a JSON object")
-    else:
-        if "status" not in result:
-            errors.append("missing 'status' field")
-        if "summary" not in result:
-            errors.append("missing 'summary' field")
-        # Type-check optional but structurally important fields
-        if "changed_files" in result and not isinstance(result["changed_files"], list):
-            errors.append("'changed_files' must be a list")
-        if "check_results" in result and not isinstance(result["check_results"], dict):
-            errors.append("'check_results' must be a dict")
-
-    if errors:
-        return {
-            "error": f"Builder output invalid: {'; '.join(errors)}",
-            "final_status": "failed",
-            "conversation": [{"role": "builder", "output": "INVALID", "t": time.time()}],
-        }
+    # Validate builder output
+    validation_error = _validate_builder_output(result)
+    if validation_error:
+        return validation_error
 
     # Record optional token usage from IDE driver (FinOps)
     if isinstance(result.get("token_usage"), dict):
@@ -706,32 +739,11 @@ def build_node(state: WorkflowState) -> dict[str, Any]:
     except Exception:
         pass  # Lenient: proceed even if extra fields exist
 
-    # C3: Semantic validation — completed with no changed_files is suspicious
-    # (MAST NeurIPS 2025 TV: task verification must be independent of claim)
-    builder_status = str(result.get("status", "")).lower()
-    changed_files = result.get("changed_files", [])
-    if builder_status in ("completed", "success", "done") and not changed_files:
-        _log.warning(
-            "Builder claims '%s' but reported no changed_files — "
-            "forwarding to reviewer with warning.", builder_status,
-        )
-        result.setdefault("_empty_changeset_warning", True)
+    # C3 + A4: Semantic validation + quality gate enforcement
+    _enrich_builder_result(result, state)
 
-    # A4: Quality gate enforcement — check that required gates passed
     skill_id = state["skill_id"]
     contract = load_contract(skill_id)
-    check_results = result.get("check_results", {})
-    gate_warnings: list[str] = []
-    for gate in contract.quality_gates:
-        gate_result = check_results.get(gate)
-        if gate_result is None:
-            gate_warnings.append(f"quality gate '{gate}' not reported")
-        elif str(gate_result).lower() not in ("pass", "passed", "ok", "success", "true"):
-            gate_warnings.append(f"quality gate '{gate}' failed: {gate_result}")
-    # Gate failures go to reviewer as extra context (not hard-fail)
-    if gate_warnings:
-        result.setdefault("gate_warnings", gate_warnings)
-
     task = Task(
         task_id=state["task_id"],
         trace_id="0" * 16,
@@ -892,14 +904,156 @@ def review_node(state: WorkflowState) -> dict[str, Any]:
     return review_result
 
 
+def _decide_approve(state: "WorkflowState", rubber_stamp: bool) -> dict[str, Any]:
+    """Handle approve decision in decide_node."""
+    convo_entries: list[dict[str, Any]] = []
+    if rubber_stamp:
+        _log.warning(
+            "Task %s approved with rubber-stamp warning — review may lack "
+            "independent verification (MAST TV-1). Approving with audit note.",
+            state.get("task_id", "?"),
+        )
+        convo_entries.append({
+            "role": "orchestrator", "action": "rubber_stamp_warning",
+            "details": "Reviewer approved without substantive reasoning. "
+                       "Approval accepted but flagged for audit.",
+            "reviewer_id": state.get("reviewer_id", "?"),
+            "t": time.time(),
+        })
+    convo_entries.append({"role": "orchestrator", "action": "approved", "t": time.time()})
+    full_convo = state.get("conversation", []) + convo_entries
+    write_dashboard(
+        task_id=state["task_id"],
+        done_criteria=state.get("done_criteria", []),
+        current_agent=state.get("reviewer_id", ""),
+        current_role="done",
+        conversation=full_convo,
+        status_msg="✅ 审查通过，任务完成",
+    )
+    archive_conversation(state["task_id"], full_convo)
+    return {"final_status": "approved", "conversation": convo_entries}
+
+
+def _decide_request_changes(
+    state: "WorkflowState", reviewer_output: dict[str, Any],
+) -> dict[str, Any]:
+    """Handle request_changes decision in decide_node."""
+    feedback = reviewer_output.get("feedback", "")
+    retry_count = state.get("retry_count", 0)
+    budget = state.get("retry_budget", 2)
+
+    rc_count = sum(
+        1 for e in state.get("conversation", [])
+        if e.get("action") == "request_changes"
+    )
+    if rc_count >= MAX_REQUEST_CHANGES:
+        _log.warning("request_changes cap reached (%d), escalating", rc_count)
+        final_entry = {"role": "orchestrator", "action": "escalated",
+                       "reason": f"request_changes cap ({rc_count})", "t": time.time()}
+        full_convo = state.get("conversation", []) + [final_entry]
+        archive_conversation(state["task_id"], full_convo)
+        return {"error": "REQUEST_CHANGES_CAP", "final_status": "escalated",
+                "conversation": [final_entry]}
+
+    write_dashboard(
+        task_id=state["task_id"],
+        done_criteria=state.get("done_criteria", []),
+        current_agent=state.get("builder_id", ""),
+        current_role="builder",
+        conversation=state.get("conversation", []),
+        status_msg=f"🔧 需修改 ({retry_count}/{budget})",
+    )
+    return {"conversation": [
+        {"role": "orchestrator", "action": "request_changes",
+         "feedback": feedback, "t": time.time()}
+    ]}
+
+
+def _decide_reject_retry(
+    state: "WorkflowState", reviewer_output: dict[str, Any],
+) -> dict[str, Any]:
+    """Handle reject decision with retry budget in decide_node."""
+    retry_count = state.get("retry_count", 0) + 1
+    budget = state.get("retry_budget", 2)
+
+    if retry_count > budget:
+        last_feedback = reviewer_output.get("feedback", "")
+        feedback_summary = (last_feedback[:200] + "…") if len(last_feedback) > 200 else last_feedback
+        final_entry = {"role": "orchestrator", "action": "escalated",
+                       "reason": "budget exhausted",
+                       "last_feedback": feedback_summary, "t": time.time()}
+        full_convo = state.get("conversation", []) + [final_entry]
+        write_dashboard(
+            task_id=state["task_id"],
+            done_criteria=state.get("done_criteria", []),
+            current_agent=state.get("reviewer_id", ""),
+            current_role="escalated",
+            conversation=full_convo,
+            error=f"重试预算耗尽 ({retry_count - 1}/{budget})",
+        )
+        archive_conversation(state["task_id"], full_convo)
+        return {
+            "error": f"BUDGET_EXHAUSTED: {feedback_summary}" if feedback_summary else "BUDGET_EXHAUSTED",
+            "retry_count": retry_count,
+            "final_status": "escalated",
+            "conversation": [final_entry],
+        }
+
+    # E2: Structure retry feedback
+    raw_feedback = reviewer_output.get("feedback", "")
+    decision_label = reviewer_output.get("decision", "reject")
+    sections = [f"## Reviewer Decision: {decision_label.upper()}"]
+    sections.append(f"### Feedback\n{raw_feedback}")
+    prev_builder = state.get("builder_output")
+    if isinstance(prev_builder, dict):
+        gw = prev_builder.get("gate_warnings")
+        if gw:
+            sections.append("### Quality Gate Warnings\n" + "\n".join(f"- {w}" for w in gw))
+    sections.append(f"### Retry Status\nAttempt {retry_count}/{budget}")
+    feedback = "\n\n".join(sections)
+
+    # DDI decay warning
+    if retry_count >= 2:
+        _log.warning(
+            "DDI decay: retry %d/%d — effectiveness likely degraded 60-80%%. "
+            "Consider fresh approach instead of incremental patching.",
+            retry_count, budget,
+        )
+        feedback += (
+            f"\n\n⚠️ 注意: 这是第 {retry_count} 次重试。研究表明调试效果在 2-3 次后衰减 60-80%。"
+            " 建议: 考虑从头重新实现而非继续修补同一代码 (fresh start strategy)。"
+        )
+
+    write_dashboard(
+        task_id=state["task_id"],
+        done_criteria=state.get("done_criteria", []),
+        current_agent=state.get("builder_id", ""),
+        current_role="builder",
+        conversation=state.get("conversation", []),
+        status_msg=f"🔄 重试 ❌ 驳回 ({retry_count}/{budget})",
+    )
+
+    retry_entry: dict[str, Any] = {
+        "role": "orchestrator", "action": "retry", "feedback": feedback, "t": time.time(),
+    }
+    if isinstance(prev_builder, dict):
+        changed = prev_builder.get("changed_files")
+        if changed:
+            retry_entry["prev_changed_files"] = changed
+        gates = prev_builder.get("gate_warnings")
+        if gates:
+            retry_entry["prev_gate_warnings"] = gates
+
+    return {"retry_count": retry_count, "conversation": [retry_entry]}
+
+
 # ── Node 4: Decide ────────────────────────────────────────
 
 @_graph_node("decide")
 def decide_node(state: WorkflowState) -> dict[str, Any]:
     graph_hooks.fire_enter("decide", state)
 
-    # Early exit if state is already terminal (e.g., review_node detected cancellation
-    # or TOTAL_TIMEOUT). Without this, decide processes stale reviewer_output.
+    # Early exit if state is already terminal
     fs = state.get("final_status")
     if fs and fs not in ("approved",):
         passthrough = {
@@ -948,9 +1102,7 @@ def decide_node(state: WorkflowState) -> dict[str, Any]:
         reviewer_output["_rubber_stamp_warning"] = True
         decision = "request_changes"
 
-    # Track retry effectiveness (DDI measurement) — count all review rounds,
-    # not just reject retries. request_changes doesn't increment retry_count
-    # but still represents a review round for DDI tracking.
+    # Track retry effectiveness (DDI measurement)
     review_round = sum(
         1 for e in state.get("conversation", [])
         if e.get("action") in ("retry", "request_changes")
@@ -959,175 +1111,14 @@ def decide_node(state: WorkflowState) -> dict[str, Any]:
         graph_stats.record_retry_outcome(review_round, decision)
 
     if decision == "approve":
-        # C1: Check rubber-stamp warning from review_node (MAST NeurIPS 2025 TV-1).
-        # If reviewer approved without substantive reasoning, record audit trail.
-        convo_entries: list[dict[str, Any]] = []
-        if rubber_stamp:
-            _log.warning(
-                "Task %s approved with rubber-stamp warning — review may lack "
-                "independent verification (MAST TV-1). Approving with audit note.",
-                state.get("task_id", "?"),
-            )
-            convo_entries.append({
-                "role": "orchestrator", "action": "rubber_stamp_warning",
-                "details": "Reviewer approved without substantive reasoning. "
-                           "Approval accepted but flagged for audit.",
-                "reviewer_id": state.get("reviewer_id", "?"),
-                "t": time.time(),
-            })
+        result = _decide_approve(state, rubber_stamp)
+    elif decision == "request_changes":
+        result = _decide_request_changes(state, reviewer_output)
+    else:
+        result = _decide_reject_retry(state, reviewer_output)
 
-        final_entry = {"role": "orchestrator", "action": "approved", "t": time.time()}
-        convo_entries.append(final_entry)
-        full_convo = state.get("conversation", []) + convo_entries
-        write_dashboard(
-            task_id=state["task_id"],
-            done_criteria=state.get("done_criteria", []),
-            current_agent=state.get("reviewer_id", ""),
-            current_role="done",
-            conversation=full_convo,
-            status_msg="✅ 审查通过，任务完成",
-        )
-        archive_conversation(state["task_id"], full_convo)
-        approve_result = {
-            "final_status": "approved",
-            "conversation": convo_entries,
-        }
-        graph_hooks.fire_exit("decide", state, approve_result)
-        return approve_result
-
-    # request_changes: soft reject — does NOT consume retry budget,
-    # but capped at MAX_REQUEST_CHANGES to prevent infinite loops (SHIELDA pattern)
-    if decision == "request_changes":
-        feedback = reviewer_output.get("feedback", "")
-        retry_count = state.get("retry_count", 0)  # do NOT increment
-        budget = state.get("retry_budget", 2)
-
-        # Count how many request_changes have occurred
-        rc_count = sum(
-            1 for e in state.get("conversation", [])
-            if e.get("action") == "request_changes"
-        )
-        if rc_count >= MAX_REQUEST_CHANGES:
-            _log.warning("request_changes cap reached (%d), escalating", rc_count)
-            final_entry = {"role": "orchestrator", "action": "escalated",
-                           "reason": f"request_changes cap ({rc_count})", "t": time.time()}
-            full_convo = state.get("conversation", []) + [final_entry]
-            archive_conversation(state["task_id"], full_convo)
-            cap_result = {
-                "error": "REQUEST_CHANGES_CAP",
-                "final_status": "escalated",
-                "conversation": [final_entry],
-            }
-            graph_hooks.fire_exit("decide", state, cap_result)
-            return cap_result
-
-        write_dashboard(
-            task_id=state["task_id"],
-            done_criteria=state.get("done_criteria", []),
-            current_agent=state.get("builder_id", ""),
-            current_role="builder",
-            conversation=state.get("conversation", []),
-            status_msg=f"🔧 需修改 ({retry_count}/{budget})",
-        )
-        rc_result = {
-            "conversation": [
-                {"role": "orchestrator", "action": "request_changes",
-                 "feedback": feedback, "t": time.time()}
-            ],
-        }
-        graph_hooks.fire_exit("decide", state, rc_result)
-        return rc_result
-
-    # Reject → check retry budget (consumes budget)
-    retry_count = state.get("retry_count", 0) + 1
-    budget = state.get("retry_budget", 2)
-
-    if retry_count > budget:
-        last_feedback = reviewer_output.get("feedback", "")
-        # Truncate for diagnostic summary (Auto-Diagnose, ICSE 2026 SEIP)
-        feedback_summary = (last_feedback[:200] + "…") if len(last_feedback) > 200 else last_feedback
-        final_entry = {"role": "orchestrator", "action": "escalated",
-                       "reason": "budget exhausted",
-                       "last_feedback": feedback_summary, "t": time.time()}
-        full_convo = state.get("conversation", []) + [final_entry]
-        write_dashboard(
-            task_id=state["task_id"],
-            done_criteria=state.get("done_criteria", []),
-            current_agent=state.get("reviewer_id", ""),
-            current_role="escalated",
-            conversation=full_convo,
-            error=f"重试预算耗尽 ({retry_count - 1}/{budget})",
-        )
-        archive_conversation(state["task_id"], full_convo)
-        esc_result = {
-            "error": f"BUDGET_EXHAUSTED: {feedback_summary}" if feedback_summary else "BUDGET_EXHAUSTED",
-            "retry_count": retry_count,
-            "final_status": "escalated",
-            "conversation": [final_entry],
-        }
-        graph_hooks.fire_exit("decide", state, esc_result)
-        return esc_result
-
-    # Has budget → retry with feedback
-    raw_feedback = reviewer_output.get("feedback", "")
-
-    # E2: Structure retry feedback (FeedbackEval arXiv 2504.06939:
-    # structured feedback >> free-text for LLM comprehension).
-    decision_label = reviewer_output.get("decision", "reject")
-    sections = [f"## Reviewer Decision: {decision_label.upper()}"]
-    sections.append(f"### Feedback\n{raw_feedback}")
-    # Include gate warnings if present
-    prev_builder = state.get("builder_output")
-    if isinstance(prev_builder, dict):
-        gw = prev_builder.get("gate_warnings")
-        if gw:
-            sections.append("### Quality Gate Warnings\n" + "\n".join(f"- {w}" for w in gw))
-    sections.append(f"### Retry Status\nAttempt {retry_count}/{budget}")
-    feedback = "\n\n".join(sections)
-
-    # DDI decay warning (Nature Sci Rep 2025, NeurIPS 2024 explore-exploit):
-    # Debugging effectiveness decays 60-80% after 2-3 attempts.
-    # Suggest fresh approach instead of incremental patching.
-    if retry_count >= 2:
-        _log.warning(
-            "DDI decay: retry %d/%d — effectiveness likely degraded 60-80%%. "
-            "Consider fresh approach instead of incremental patching.",
-            retry_count, budget,
-        )
-        feedback += (
-            f"\n\n⚠️ 注意: 这是第 {retry_count} 次重试。研究表明调试效果在 2-3 次后衰减 60-80%。"
-            " 建议: 考虑从头重新实现而非继续修补同一代码 (fresh start strategy)。"
-        )
-
-    write_dashboard(
-        task_id=state["task_id"],
-        done_criteria=state.get("done_criteria", []),
-        current_agent=state.get("builder_id", ""),
-        current_role="builder",
-        conversation=state.get("conversation", []),
-        status_msg=f"🔄 重试 ❌ 驳回 ({retry_count}/{budget})",
-    )
-
-    # Preserve previous round context to prevent inter-round information loss
-    # (Agent Error Taxonomy ICLR 2026; MAST NeurIPS 2025 IA-2).
-    retry_entry: dict[str, Any] = {
-        "role": "orchestrator", "action": "retry", "feedback": feedback, "t": time.time(),
-    }
-    # prev_builder already fetched above (E2 structured feedback)
-    if isinstance(prev_builder, dict):
-        changed = prev_builder.get("changed_files")
-        if changed:
-            retry_entry["prev_changed_files"] = changed
-        gates = prev_builder.get("gate_warnings")
-        if gates:
-            retry_entry["prev_gate_warnings"] = gates
-
-    retry_result = {
-        "retry_count": retry_count,
-        "conversation": [retry_entry],
-    }
-    graph_hooks.fire_exit("decide", state, retry_result)
-    return retry_result
+    graph_hooks.fire_exit("decide", state, result)
+    return result
 
 
 # ── Cancel Detection ──────────────────────────────────

@@ -105,6 +105,58 @@ def _show_waiting(app, config):
     click.echo()
 
 
+def _handle_terminal(
+    status: Any, task_id: str, ts: str, manage_lock: bool,
+) -> None:
+    """Handle terminal task status in watch loop."""
+    final = status.final_status or "done"
+    if final:
+        save_task_yaml(task_id, {"task_id": task_id, "status": final})
+    if manage_lock:
+        release_lock()
+        clear_runtime()
+    if final in ("approved", "done"):
+        summary = ""
+        bo = status.values.get("builder_output")
+        if isinstance(bo, dict):
+            summary = bo.get("summary", "")
+        retries = status.values.get("retry_count", 0)
+        click.echo(f"[{ts}] ✅ Task finished. Status: {final}")
+        if summary:
+            click.echo(f"             {summary}")
+        if retries:
+            click.echo(f"             (经过 {retries} 次重试)")
+    else:
+        error = status.error or ""
+        click.echo(f"[{ts}] ❌ Task finished. Status: {final}{' — ' + error if error else ''}")
+
+
+def _show_next_agent(next_status: Any, ts: str) -> None:
+    """Show next waiting state: retry feedback + auto-spawn or manual instructions."""
+    next_role = next_status.waiting_role
+    next_agent = next_status.waiting_agent or "?"
+    retry_n = next_status.values.get("retry_count", 0)
+    if retry_n > 0 and next_role == "builder":
+        reviewer_out = next_status.values.get("reviewer_output") or {}
+        feedback = reviewer_out.get("feedback", "") if isinstance(reviewer_out, dict) else ""
+        budget = next_status.values.get("retry_budget", 2)
+        click.echo(f"[{ts}] � Reviewer 要求修改 ({retry_n}/{budget}):")
+        if feedback:
+            click.echo(f"             {feedback}")
+    from multi_agent.driver import can_use_cli, get_agent_driver, spawn_cli_agent
+    drv = get_agent_driver(next_agent)
+    if drv["driver"] == "cli" and drv["command"] and can_use_cli(drv["command"]):
+        t_sec = next_status.values.get("timeout_sec", 600)
+        click.echo(f"[{ts}] 🤖 自动调用 {next_agent} CLI…")
+        spawn_cli_agent(next_agent, next_role, drv["command"], timeout_sec=t_sec)
+    else:
+        if drv["driver"] == "cli" and drv["command"] and not can_use_cli(drv["command"]):
+            binary = drv["command"].split()[0]
+            click.echo(f"[{ts}] ⚠️  `{binary}` 未安装，降级手动模式")
+        click.echo(f"[{ts}] 📋 在 {next_agent} IDE 里对 AI 说:")
+        click.echo('             "帮我完成 @.multi-agent/TASK.md 里的任务"')
+
+
 def _run_watch_loop(app, config, task_id: str, interval: float = 2.0, manage_lock: bool = True):
     """Shared watch loop — polls outbox/ and auto-submits output."""
     from multi_agent.orchestrator import get_task_status, resume_task
@@ -120,30 +172,12 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0, manage_loc
         while True:
             elapsed = int(time.time() - start_time)
             mins, secs = divmod(elapsed, 60)
+            ts = f"{mins:02d}:{secs:02d}"
 
             status = get_task_status(app, task_id)
 
             if status.is_terminal:
-                final = status.final_status or "done"
-                if final:
-                    save_task_yaml(task_id, {"task_id": task_id, "status": final})
-                if manage_lock:
-                    release_lock()
-                    clear_runtime()
-                if final in ("approved", "done"):
-                    summary = ""
-                    bo = status.values.get("builder_output")
-                    if isinstance(bo, dict):
-                        summary = bo.get("summary", "")
-                    retries = status.values.get("retry_count", 0)
-                    click.echo(f"[{mins:02d}:{secs:02d}] ✅ Task finished. Status: {final}")
-                    if summary:
-                        click.echo(f"             {summary}")
-                    if retries:
-                        click.echo(f"             (经过 {retries} 次重试)")
-                else:
-                    error = status.error or ""
-                    click.echo(f"[{mins:02d}:{secs:02d}] ❌ Task finished. Status: {final}{' — ' + error if error else ''}")
+                _handle_terminal(status, task_id, ts, manage_lock)
                 return
 
             role = status.waiting_role or "builder"
@@ -152,17 +186,16 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0, manage_loc
             for detected_role, data in poller.check_once():
                 if detected_role == role:
                     step_label = "Build" if role == "builder" else "Review"
-                    click.echo(f"[{mins:02d}:{secs:02d}] 📥 {step_label} 完成 ({agent})")
+                    click.echo(f"[{ts}] 📥 {step_label} 完成 ({agent})")
                     try:
                         data = _normalize_resume_output(role, data, status.values)
                     except ValueError as e:
-                        click.echo(f"[{mins:02d}:{secs:02d}] ❌ {e}", err=True)
-                        click.echo(f"[{mins:02d}:{secs:02d}] 🔁 请修复 outbox/{role}.json 后重试", err=True)
+                        click.echo(f"[{ts}] ❌ {e}", err=True)
+                        click.echo(f"[{ts}] 🔁 请修复 outbox/{role}.json 后重试", err=True)
                         continue
-                    # Validate output before submitting
                     v_errors = validate_outbox_data(role, data)
                     if v_errors:
-                        click.echo(f"[{mins:02d}:{secs:02d}] ⚠️  Output warnings:", err=True)
+                        click.echo(f"[{ts}] ⚠️  Output warnings:", err=True)
                         for ve in v_errors:
                             click.echo(f"             - {ve}", err=True)
                     try:
@@ -171,36 +204,12 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0, manage_loc
                         if manage_lock:
                             release_lock()
                             clear_runtime()
-                        click.echo(f"[{mins:02d}:{secs:02d}] ❌ Error: {e}", err=True)
+                        click.echo(f"[{ts}] ❌ Error: {e}", err=True)
                         save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
                         return
 
-                    # Show next waiting state or completion
                     if not next_status.is_terminal and next_status.waiting_role:
-                        next_role = next_status.waiting_role
-                        next_agent = next_status.waiting_agent or "?"
-                        # Show retry feedback if this is a retry
-                        retry_n = next_status.values.get("retry_count", 0)
-                        if retry_n > 0 and next_role == "builder":
-                            reviewer_out = next_status.values.get("reviewer_output") or {}
-                            feedback = reviewer_out.get("feedback", "") if isinstance(reviewer_out, dict) else ""
-                            budget = next_status.values.get("retry_budget", 2)
-                            click.echo(f"[{mins:02d}:{secs:02d}] 🔄 Reviewer 要求修改 ({retry_n}/{budget}):")
-                            if feedback:
-                                click.echo(f"             {feedback}")
-                        # Auto-spawn CLI agent or show manual instructions
-                        from multi_agent.driver import can_use_cli, get_agent_driver, spawn_cli_agent
-                        drv = get_agent_driver(next_agent)
-                        if drv["driver"] == "cli" and drv["command"] and can_use_cli(drv["command"]):
-                            t_sec = next_status.values.get("timeout_sec", 600)
-                            click.echo(f"[{mins:02d}:{secs:02d}] 🤖 自动调用 {next_agent} CLI…")
-                            spawn_cli_agent(next_agent, next_role, drv["command"], timeout_sec=t_sec)
-                        else:
-                            if drv["driver"] == "cli" and drv["command"] and not can_use_cli(drv["command"]):
-                                binary = drv["command"].split()[0]
-                                click.echo(f"[{mins:02d}:{secs:02d}] ⚠️  `{binary}` 未安装，降级手动模式")
-                            click.echo(f"[{mins:02d}:{secs:02d}] 📋 在 {next_agent} IDE 里对 AI 说:")
-                            click.echo('             "帮我完成 @.multi-agent/TASK.md 里的任务"')
+                        _show_next_agent(next_status, ts)
                     break
 
             time.sleep(interval)
