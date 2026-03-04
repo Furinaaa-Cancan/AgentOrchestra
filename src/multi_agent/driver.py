@@ -1,4 +1,10 @@
-"""Agent drivers — spawn CLI agents or show file-based instructions."""
+"""Agent drivers — spawn CLI agents or show file-based instructions.
+
+Architecture note (defect B1): All driver-type dispatch is consolidated in
+``dispatch_agent()`` to eliminate the 4x duplicated if/else pattern that was
+previously scattered across cli.py.  Callers should use ``dispatch_agent()``
+instead of manually checking ``get_agent_driver()["driver"]``.
+"""
 
 from __future__ import annotations
 
@@ -12,10 +18,34 @@ import subprocess
 import tempfile
 import threading
 from pathlib import Path
+from typing import Protocol, runtime_checkable
 
 from multi_agent.config import workspace_dir, outbox_dir
 
 logger = logging.getLogger(__name__)
+
+
+# ── Driver Protocol (OCP compliance) ─────────────────────
+
+@runtime_checkable
+class AgentDriverProtocol(Protocol):
+    """Abstract interface for agent execution strategies.
+
+    Adding a new driver type (e.g. MCP, HTTP API) only requires implementing
+    this protocol — no changes to dispatch_agent() or callers needed.
+    """
+
+    def is_available(self) -> bool:
+        """Return True if this driver can execute right now."""
+        ...
+
+    def execute(self, agent_id: str, role: str, *, timeout_sec: int = 600) -> threading.Thread | None:
+        """Execute the agent. Returns a Thread for async drivers, None for sync/manual."""
+        ...
+
+    def describe_fallback(self, agent_id: str) -> str:
+        """Human-readable instruction when the driver can't auto-execute."""
+        ...
 
 # Task 10: concurrency lock — prevents duplicate CLI agent spawns
 _cli_lock = threading.Lock()
@@ -266,3 +296,64 @@ def _try_extract_json(text: str, outbox_path: Path) -> None:
 def _write_error(outbox_file: str, error_msg: str) -> None:
     """Write an error marker to outbox so the graph can detect failure."""
     _atomic_write_json(Path(outbox_file), {"status": "error", "summary": error_msg})
+
+
+# ── Unified Dispatch (defect B1 fix) ─────────────────────
+
+class DispatchResult:
+    """Outcome of dispatch_agent() — replaces scattered if/else in callers."""
+    __slots__ = ("mode", "thread", "message")
+
+    def __init__(self, mode: str, thread: threading.Thread | None, message: str):
+        self.mode = mode        # "auto" | "manual" | "degraded"
+        self.thread = thread    # non-None only for "auto"
+        self.message = message  # human-readable status line
+
+
+def dispatch_agent(
+    agent_id: str,
+    role: str,
+    *,
+    timeout_sec: int = 600,
+) -> DispatchResult:
+    """Resolve driver for *agent_id* and either auto-execute or return
+    manual-mode instructions.
+
+    This is the **single call-site** that replaces the 4x duplicated
+    if/else driver-check pattern previously in cli.py.
+
+    Returns a ``DispatchResult`` so the caller only needs to display
+    ``result.message`` — no driver-type branching required.
+    """
+    drv = get_agent_driver(agent_id)
+    step_label = "Build" if role == "builder" else "Review"
+
+    if drv["driver"] == "cli" and drv["command"]:
+        if can_use_cli(drv["command"]):
+            thread = spawn_cli_agent(agent_id, role, drv["command"], timeout_sec=timeout_sec)
+            return DispatchResult(
+                mode="auto",
+                thread=thread,
+                message=f"🤖 [{step_label}] 自动调用 {agent_id} CLI…",
+            )
+        # CLI configured but binary not installed → degrade gracefully
+        binary = drv["command"].split()[0]
+        return DispatchResult(
+            mode="degraded",
+            thread=None,
+            message=(
+                f"⚠️  {agent_id} 配置为 CLI 模式但 `{binary}` 未安装，降级为手动模式\n"
+                f"📋 [{step_label}] 在 {agent_id} IDE 里对 AI 说:\n"
+                f'   "帮我完成 @.multi-agent/TASK.md 里的任务"'
+            ),
+        )
+
+    # File-based (manual) driver
+    return DispatchResult(
+        mode="manual",
+        thread=None,
+        message=(
+            f"📋 [{step_label}] 在 {agent_id} IDE 里对 AI 说:\n"
+            f'   "帮我完成 @.multi-agent/TASK.md 里的任务"'
+        ),
+    )
