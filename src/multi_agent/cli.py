@@ -15,6 +15,13 @@ from pathlib import Path
 
 import click
 
+from multi_agent._utils import (
+    SAFE_TASK_ID_RE as _SAFE_TASK_ID_RE,
+    TERMINAL_FINAL_STATUSES,
+    count_nonempty_entries as _count_nonempty_entries,
+    is_terminal_final_status as _is_terminal_final_status,
+    positive_int as _positive_int,
+)
 from multi_agent.workspace import (
     acquire_lock,
     clear_runtime,
@@ -27,7 +34,6 @@ from multi_agent.workspace import (
 )
 
 log = logging.getLogger(__name__)
-TERMINAL_FINAL_STATUSES = {"approved", "failed", "cancelled", "escalated", "done"}
 
 
 def handle_errors(f):
@@ -90,7 +96,6 @@ def _make_config(task_id: str) -> dict:
     return {"configurable": {"thread_id": _thread_id(task_id)}}
 
 
-_SAFE_TASK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,63}$")
 _SAFE_SKILL_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
 
 
@@ -126,30 +131,8 @@ def _generate_task_id(requirement: str) -> str:
     return f"task-{h}"
 
 
-def _is_terminal_final_status(value: object) -> bool:
-    if not isinstance(value, str):
-        return False
-    return value.strip().lower() in TERMINAL_FINAL_STATUSES
-
-
-def _positive_int(value: object, default: int) -> int:
-    try:
-        iv = int(value)
-        return iv if iv > 0 else default
-    except (TypeError, ValueError):
-        return default
-
-
-def _count_nonempty_entries(value: object) -> int:
-    if not isinstance(value, list):
-        return 0
-    count = 0
-    for item in value:
-        if isinstance(item, str) and item.strip():
-            count += 1
-        elif isinstance(item, dict) and item:
-            count += 1
-    return count
+# _is_terminal_final_status, _positive_int, _count_nonempty_entries
+# imported from multi_agent._utils
 
 
 def _normalize_resume_output(role: str, data: dict, state_values: dict) -> dict:

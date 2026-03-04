@@ -16,6 +16,13 @@ import yaml
 from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 
+from multi_agent._utils import (
+    SAFE_TASK_ID_RE,
+    TERMINAL_STATES,
+    count_nonempty_entries as _count_nonempty_entries,
+    positive_int as _positive_int,
+    validate_task_id as _validate_task_id_core,
+)
 from multi_agent.config import outbox_dir, root_dir, store_db_path, workspace_dir
 from multi_agent.memory import add_pending_candidates, promote_pending_candidates
 from multi_agent.router import get_defaults
@@ -30,8 +37,7 @@ from multi_agent.workspace import (
     validate_outbox_data,
 )
 
-_SAFE_TASK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,63}$")
-TERMINAL_STATES = {"DONE", "FAILED", "ESCALATED", "CANCELLED"}
+_SAFE_TASK_ID_RE = SAFE_TASK_ID_RE
 DEFAULT_REVIEW_POLICY: dict[str, Any] = {
     "rubber_stamp": {
         "generic_phrases": [
@@ -83,8 +89,7 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _validate_task_id(task_id: str) -> None:
-    if not _SAFE_TASK_ID_RE.match(task_id):
-        raise ValueError(f"invalid task_id: {task_id!r}")
+    _validate_task_id_core(task_id)
 
 
 def _clear_task_checkpoint(task_id: str) -> None:
@@ -167,12 +172,7 @@ def _load_mode_cfg(mode: str, config_path: str | None) -> dict[str, Any]:
     return mode_cfg
 
 
-def _positive_int(value: Any, default: int) -> int:
-    try:
-        iv = int(value)
-        return iv if iv > 0 else default
-    except (TypeError, ValueError):
-        return default
+# _positive_int and _count_nonempty_entries imported from _utils
 
 
 def _normalize_phrase_list(value: Any, default: list[str]) -> list[str]:
@@ -518,16 +518,6 @@ def _parse_json_payload(raw: str) -> dict[str, Any]:
     raise ValueError("failed to parse JSON object from payload")
 
 
-def _count_nonempty_entries(value: Any) -> int:
-    if not isinstance(value, list):
-        return 0
-    count = 0
-    for item in value:
-        if isinstance(item, str) and item.strip():
-            count += 1
-        elif isinstance(item, dict) and item:
-            count += 1
-    return count
 
 
 def _normalize_envelope(
