@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from multi_agent._utils import SAFE_TASK_ID_RE as _ID_RE
 from multi_agent.schema import SubTask
 
 _log = logging.getLogger(__name__)
@@ -64,8 +65,6 @@ def clear_checkpoint(parent_task_id: str) -> None:
     ckpt_path = workspace_dir() / "checkpoints" / f"decompose-{parent_task_id}.json"
     if ckpt_path.exists():
         ckpt_path.unlink(missing_ok=True)
-
-_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,63}$")
 
 
 def generate_sub_task_id(parent_task_id: str, sub_id: str) -> str:

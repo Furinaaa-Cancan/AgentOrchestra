@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import functools
+import json
+import re
 import time
 from operator import add
 from typing import Annotated, Any
@@ -17,6 +19,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 import logging
 _log = logging.getLogger(__name__)
 
+from multi_agent._utils import DEFAULT_RUBBER_STAMP_PHRASES as _RUBBER_STAMP_PHRASES
 from multi_agent.config import store_db_path
 from multi_agent.contract import load_contract, validate_preconditions
 from multi_agent.dashboard import write_dashboard
@@ -37,17 +40,6 @@ MAX_SNAPSHOTS = 10
 MAX_CONVERSATION_SIZE = 50
 MAX_REQUEST_CHANGES = 3  # DDI research: effectiveness decays 60-80% after 2-3 attempts
 MAX_TASK_DURATION_SEC = 7200  # 2h total task guard (OWASP LLM10:2025 DoW prevention)
-_RUBBER_STAMP_PHRASES = {
-    "lgtm",
-    "looks good",
-    "no issues",
-    "approved",
-    "all good",
-    "ship it",
-    "good to go",
-    "looks fine",
-    "no comments",
-}
 
 
 class GraphStats:
@@ -153,12 +145,11 @@ class GraphStats:
 
     def save(self, path=None) -> None:
         """Save stats to .multi-agent/stats.json."""
-        import json as _json
         from multi_agent.config import workspace_dir as _ws
         p = path or (_ws() / "stats.json")
         p.parent.mkdir(parents=True, exist_ok=True)
         try:
-            p.write_text(_json.dumps(self.summary(), indent=2), encoding="utf-8")
+            p.write_text(json.dumps(self.summary(), indent=2), encoding="utf-8")
         except OSError:
             pass
 
@@ -168,7 +159,6 @@ graph_stats = GraphStats()
 
 def log_timing(task_id: str, node: str, start: float, end: float) -> None:
     """Append a timing entry to .multi-agent/logs/timing-{task_id}.jsonl."""
-    import json as _json
     from multi_agent.config import workspace_dir as _ws
     logs_dir = _ws() / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
@@ -181,7 +171,7 @@ def log_timing(task_id: str, node: str, start: float, end: float) -> None:
     path = logs_dir / f"timing-{task_id}.jsonl"
     try:
         with path.open("a", encoding="utf-8") as f:
-            f.write(_json.dumps(entry) + "\n")
+            f.write(json.dumps(entry) + "\n")
     except OSError:
         pass
 
@@ -226,29 +216,27 @@ def trim_conversation(conversation: list[dict]) -> list[dict]:
 
 def save_state_snapshot(task_id: str, node_name: str, state: dict) -> None:
     """Save a state snapshot for debugging. Keeps only the latest MAX_SNAPSHOTS."""
-    import json as _json
     from multi_agent.config import workspace_dir as _ws_dir
     snap_dir = _ws_dir() / "snapshots"
     snap_dir.mkdir(parents=True, exist_ok=True)
 
     # G2: Sanitize task_id/node_name to prevent path traversal
     # (e.g. task_id="../../etc/passwd" would write outside snapshots dir)
-    import re as _re
-    safe_tid = _re.sub(r"[^a-zA-Z0-9._-]", "_", task_id)[:64]
-    safe_node = _re.sub(r"[^a-zA-Z0-9._-]", "_", node_name)[:32]
+    safe_tid = re.sub(r"[^a-zA-Z0-9._-]", "_", task_id)[:64]
+    safe_node = re.sub(r"[^a-zA-Z0-9._-]", "_", node_name)[:32]
 
     ts = int(time.time() * 1000)
     safe_state = {}
     for k, v in state.items():
         try:
-            _json.dumps(v)
+            json.dumps(v)
             safe_state[k] = v
         except (TypeError, ValueError):
             safe_state[k] = str(v)
 
     path = snap_dir / f"{safe_tid}-{safe_node}-{ts}.json"
     try:
-        path.write_text(_json.dumps(safe_state, ensure_ascii=False, indent=2), encoding="utf-8")
+        path.write_text(json.dumps(safe_state, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception:
         return
 
@@ -263,9 +251,7 @@ def save_state_snapshot(task_id: str, node_name: str, state: dict) -> None:
 
 # ── Event Hooks ──────────────────────────────────────────
 
-import logging as _logging
-
-_hook_logger = _logging.getLogger(__name__ + ".hooks")
+_hook_logger = logging.getLogger(__name__ + ".hooks")
 
 
 class EventHooks:

@@ -10,6 +10,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from multi_agent._utils import SAFE_TASK_ID_RE as _ID_RE
+
 
 # ── Enums ─────────────────────────────────────────────────
 
@@ -78,7 +80,6 @@ class ReviewDecision(str, Enum):
 
 # ── Helpers ───────────────────────────────────────────────
 
-_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,63}$")
 _TRACE_RE = re.compile(r"^[a-f0-9-]{16,64}$")
 
 

@@ -59,3 +59,18 @@ def is_terminal_final_status(value: object) -> bool:
     if not isinstance(value, str):
         return False
     return value.strip().lower() in TERMINAL_FINAL_STATUSES
+
+
+# ── Review Policy Constants ───────────────────────────────
+
+DEFAULT_RUBBER_STAMP_PHRASES: frozenset[str] = frozenset({
+    "lgtm",
+    "looks good",
+    "no issues",
+    "approved",
+    "all good",
+    "ship it",
+    "good to go",
+    "looks fine",
+    "no comments",
+})
