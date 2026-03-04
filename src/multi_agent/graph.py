@@ -8,6 +8,7 @@ import logging
 import re
 import sqlite3
 import time
+from collections.abc import Mapping
 from operator import add
 from typing import Annotated, Any
 
@@ -264,35 +265,35 @@ class EventHooks:
         hooks.on_error(lambda node, state, err: alert(err))
     """
 
-    def __init__(self):
-        self._enter: dict[str, list] = {}   # node_name → [callbacks]
-        self._exit: dict[str, list] = {}    # node_name → [callbacks]
-        self._error: list = []              # global error handlers
+    def __init__(self) -> None:
+        self._enter: dict[str, list[Any]] = {}   # node_name → [callbacks]
+        self._exit: dict[str, list[Any]] = {}    # node_name → [callbacks]
+        self._error: list[Any] = []              # global error handlers
 
-    def on_node_enter(self, node: str, callback) -> None:
+    def on_node_enter(self, node: str, callback: Any) -> None:
         self._enter.setdefault(node, []).append(callback)
 
-    def on_node_exit(self, node: str, callback) -> None:
+    def on_node_exit(self, node: str, callback: Any) -> None:
         self._exit.setdefault(node, []).append(callback)
 
-    def on_error(self, callback) -> None:
+    def on_error(self, callback: Any) -> None:
         self._error.append(callback)
 
-    def fire_enter(self, node: str, state: dict) -> None:
+    def fire_enter(self, node: str, state: Mapping[str, Any]) -> None:
         for cb in self._enter.get(node, []):
             try:
                 cb(state)
             except Exception as e:
                 _hook_logger.warning("Hook enter/%s error: %s", node, e)
 
-    def fire_exit(self, node: str, state: dict, result: dict) -> None:
+    def fire_exit(self, node: str, state: Mapping[str, Any], result: dict[str, Any] | None = None) -> None:
         for cb in self._exit.get(node, []):
             try:
                 cb(state, result)
             except Exception as e:
                 _hook_logger.warning("Hook exit/%s error: %s", node, e)
 
-    def fire_error(self, node: str, state: dict, error: Exception) -> None:
+    def fire_error(self, node: str, state: Mapping[str, Any], error: Exception) -> None:
         for cb in self._error:
             try:
                 cb(node, state, error)
@@ -324,9 +325,9 @@ def register_hook(event: str, callback) -> None:
         graph_hooks.on_node_enter(event, callback)
         return
     kind, node = mapping
-    if kind == "enter":
+    if kind == "enter" and node is not None:
         graph_hooks.on_node_enter(node, callback)
-    elif kind == "exit":
+    elif kind == "exit" and node is not None:
         graph_hooks.on_node_exit(node, callback)
     elif kind == "error":
         graph_hooks.on_error(callback)
@@ -465,7 +466,7 @@ def _is_rubber_stamp_approval(reviewer_output: dict[str, Any]) -> bool:
 
 # ── TASK.md — Universal Entry Point ──────────────────────
 
-def _write_task_md(state: dict, builder_id: str, reviewer_id: str, current_role: str):
+def _write_task_md(state: Mapping[str, Any], builder_id: str, reviewer_id: str, current_role: str) -> None:
     """Write TASK.md — THE single self-contained file for the IDE AI.
 
     TASK.md embeds the full prompt content inline so the IDE AI gets
@@ -561,10 +562,12 @@ def plan_node(state: WorkflowState) -> dict:
     retry_count = state.get("retry_count", 0)
     retry_feedback = ""
     previous_summary = ""
-    if retry_count > 0 and state.get("reviewer_output"):
-        retry_feedback = state["reviewer_output"].get("feedback", "")
-    if retry_count > 0 and state.get("builder_output"):
-        previous_summary = state["builder_output"].get("summary", "")
+    rev_out = state.get("reviewer_output") or {}
+    bld_out = state.get("builder_output") or {}
+    if retry_count > 0 and rev_out:
+        retry_feedback = rev_out.get("feedback", "")
+    if retry_count > 0 and bld_out:
+        previous_summary = bld_out.get("summary", "")
 
     prompt = render_builder_prompt(
         task=task,
@@ -915,10 +918,10 @@ def decide_node(state: WorkflowState) -> dict:
     if len(trimmed) < len(convo):
         state = {**state, "conversation": trimmed}
 
-    reviewer_output = state.get("reviewer_output", {})
+    reviewer_output: dict[str, Any] = state.get("reviewer_output") or {}
     review_policy = state.get("review_policy")
     rubber_policy = review_policy.get("rubber_stamp") if isinstance(review_policy, dict) else {}
-    reviewer_for_detect = dict(reviewer_output) if isinstance(reviewer_output, dict) else {}
+    reviewer_for_detect = dict(reviewer_output)
     if isinstance(rubber_policy, dict):
         reviewer_for_detect["_rubber_policy"] = rubber_policy
     decision = str(reviewer_output.get("decision", "reject")).lower().strip()
