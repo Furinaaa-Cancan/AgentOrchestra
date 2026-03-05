@@ -375,9 +375,9 @@ def spawn_gui_agent(
     task_file = workspace_dir() / "TASK.md"
     outbox_file = outbox_dir() / f"{role}.json"
     message = (
-        f"请完成以下任务文件中的工作:\n"
-        f"任务文件: {task_file}\n"
-        f"完成后将 JSON 输出保存到: {outbox_file}"
+        f"帮我完成 @.multi-agent/TASK.md 里的任务，"
+        f"完成后将 JSON 输出保存到 @.multi-agent/outbox/{role}.json "
+        f"(绝对路径: {outbox_file})"
     )
 
     def _run() -> None:
