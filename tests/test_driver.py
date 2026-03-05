@@ -377,3 +377,87 @@ class TestClassifyStderr:
         from multi_agent.driver import classify_stderr
         assert classify_stderr("Processing file...") == "info"
         assert classify_stderr("") == "info"
+
+
+class TestStreamStdout:
+    """Cover lines 89-95: _stream_stdout."""
+
+    def test_collects_lines(self):
+        mock_proc = MagicMock()
+        mock_proc.stdout = iter(["hello\n", "world\n"])
+        result = driver._stream_stdout(mock_proc, "ag", "builder")
+        assert "hello" in result
+        assert "world" in result
+
+    def test_empty_stdout(self):
+        mock_proc = MagicMock()
+        mock_proc.stdout = iter([])
+        result = driver._stream_stdout(mock_proc, "ag", "builder")
+        assert result == ""
+
+    def test_none_stdout(self):
+        mock_proc = MagicMock()
+        mock_proc.stdout = None
+        result = driver._stream_stdout(mock_proc, "ag", "builder")
+        assert result == ""
+
+
+class TestAtomicWriteJsonErrorPath:
+    """Cover lines 265-268: _atomic_write_json failure cleanup."""
+
+    def test_cleanup_on_write_error(self, tmp_path):
+        path = tmp_path / "test.json"
+        # Force json.dump to fail by passing unserializable data
+        with pytest.raises(TypeError):
+            driver._atomic_write_json(path, {"bad": object()})
+        # Temp file should be cleaned up
+        assert not path.exists()
+
+
+class TestTryExtractJsonFenceDecodeError:
+    """Cover lines 281-282: fenced JSON that fails to parse."""
+
+    def test_fenced_invalid_json_skipped(self, tmp_path):
+        text = '```json\n{invalid json here}\n```'
+        outbox = tmp_path / "builder.json"
+        driver._try_extract_json(text, outbox)
+        assert not outbox.exists()
+
+
+class TestDispatchAgent:
+    """Cover lines 305-357: dispatch_agent auto/degraded/manual."""
+
+    def test_auto_mode(self, tmp_path):
+        outbox_d = tmp_path / "outbox"
+        outbox_d.mkdir()
+        with patch("multi_agent.driver.get_agent_driver", return_value={"driver": "cli", "command": "echo test"}), \
+             patch("multi_agent.driver.can_use_cli", return_value=True), \
+             patch("multi_agent.driver.spawn_cli_agent", return_value=MagicMock()) as mock_spawn:
+            result = driver.dispatch_agent("ws", "builder", timeout_sec=60)
+        assert result.mode == "auto"
+        assert result.thread is not None
+        assert "自动调用" in result.message
+        mock_spawn.assert_called_once()
+
+    def test_degraded_mode(self):
+        with patch("multi_agent.driver.get_agent_driver", return_value={"driver": "cli", "command": "missing-bin run"}), \
+             patch("multi_agent.driver.can_use_cli", return_value=False):
+            result = driver.dispatch_agent("ws", "builder")
+        assert result.mode == "degraded"
+        assert result.thread is None
+        assert "未安装" in result.message
+        assert "missing-bin" in result.message
+
+    def test_manual_mode(self):
+        with patch("multi_agent.driver.get_agent_driver", return_value={"driver": "file", "command": ""}):
+            result = driver.dispatch_agent("ws", "reviewer")
+        assert result.mode == "manual"
+        assert result.thread is None
+        assert "TASK.md" in result.message
+        assert "Review" in result.message
+
+    def test_dispatch_result_slots(self):
+        r = driver.DispatchResult(mode="auto", thread=None, message="test")
+        assert r.mode == "auto"
+        assert r.thread is None
+        assert r.message == "test"
