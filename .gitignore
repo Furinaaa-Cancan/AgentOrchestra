@@ -8,6 +8,10 @@ runtime/handoffs/
 __pycache__/
 .coverage
 *.egg-info/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
 
 # Multi-agent workspace runtime
 .multi-agent/inbox/

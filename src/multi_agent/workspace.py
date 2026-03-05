@@ -240,7 +240,7 @@ def acquire_lock(task_id: str) -> None:
                 continue
             raise RuntimeError(
                 f"Lock already held by task '{existing}'. "
-                f"Run 'ma cancel' to release it or wait for completion."
+                f"Run 'my cancel' to release it or wait for completion."
             ) from None
 
 

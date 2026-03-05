@@ -1,6 +1,6 @@
 # IDE Prompt Workflow（Session 模式）
 
-统一使用 `ma session`，不再手工拼事件命令。
+统一使用 `my session`，不再手工拼事件命令。
 
 ## Step 1: Start
 

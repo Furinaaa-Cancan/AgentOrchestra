@@ -16,9 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Prompt version tracking metadata
 - Retry context enhancement in builder prompts
 - Example JSON output files in `docs/examples/`
-- `ma render` command for prompt dry-run preview
-- `ma init` command for project initialization
-- `ma history` command for task history
+- `my render` command for prompt dry-run preview
+- `my init` command for project initialization
+- `my history` command for task history
 - Unified CLI error handling decorator (`@handle_errors`)
 - SIGTERM signal handler for graceful shutdown
 - File operation retry decorator (`@retry_file_op`)
@@ -93,6 +93,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Initial project structure
 - LangGraph 4-node graph: plan → build → review → decide
 - File-based workspace communication
-- Basic CLI: `ma go`, `ma done`, `ma status`, `ma cancel`, `ma watch`
+- Basic CLI: `my go`, `my done`, `my status`, `my cancel`, `my watch`
 - TASK.md self-contained prompt pattern
 - Outbox auto-detection via polling watcher

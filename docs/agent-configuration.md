@@ -55,15 +55,15 @@ For IDE-based agents (Windsurf, Cursor, Kiro, etc.):
 ```
 
 The orchestrator writes prompts to `TASK.md`. In IDE-first session mode, agents only need:
-1. Read current prompt (`TASK.md` or `ma session pull` output)
+1. Read current prompt (`TASK.md` or `my session pull` output)
 2. Write a structured envelope JSON to `outbox/`
 
 Recommended commands:
 
 ```bash
-ma session start --task tasks/examples/task-code-implement.json --mode strict
-ma session pull --task-id task-api-user-create --agent windsurf
-ma session push --task-id task-api-user-create --agent windsurf --file .multi-agent/outbox/builder.json
+my session start --task tasks/examples/task-code-implement.json --mode strict
+my session pull --task-id task-api-user-create --agent windsurf
+my session push --task-id task-api-user-create --agent windsurf --file .multi-agent/outbox/builder.json
 ```
 
 ### CLI Driver (automated agents)
@@ -162,4 +162,4 @@ invalid role mapping: builder and reviewer must differ (both are 'xxx')
 
 ### Health check
 
-Run `ma status` to see agent health and active task information.
+Run `my status` to see agent health and active task information.

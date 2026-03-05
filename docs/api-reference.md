@@ -239,15 +239,15 @@ Get prompt version and timestamp metadata.
 
 | Command | Description |
 |---------|-------------|
-| `ma go "req"` | Start task + auto-watch |
-| `ma session start --task task.json --mode strict` | Start IDE-first session |
-| `ma session status --task-id ID` | Show owner/state in session mode |
-| `ma session pull --task-id ID --agent X` | Output pure IDE prompt |
-| `ma session push --task-id ID --agent X --file output.json` | Submit envelope and auto-progress |
-| `ma trace --task-id ID --format tree\|mermaid` | Render event trace |
-| `ma go "req"` / `ma done` / `ma watch` | Legacy compatibility commands (prefer `ma session *`) |
-| `ma status` | Show task state |
-| `ma cancel` | Cancel active task |
-| `ma render "req"` | Preview prompt (dry-run) |
-| `ma init` | Initialize project structure |
-| `ma history` | Show task history |
+| `my go "req"` | Start task + auto-watch |
+| `my session start --task task.json --mode strict` | Start IDE-first session |
+| `my session status --task-id ID` | Show owner/state in session mode |
+| `my session pull --task-id ID --agent X` | Output pure IDE prompt |
+| `my session push --task-id ID --agent X --file output.json` | Submit envelope and auto-progress |
+| `my trace --task-id ID --format tree\|mermaid` | Render event trace |
+| `my done` / `my watch` | Submit output / resume auto-detect |
+| `my status` | Show task state |
+| `my cancel` | Cancel active task |
+| `my render "req"` | Preview prompt (dry-run) |
+| `my init` | Initialize project structure |
+| `my history` | Show task history |
