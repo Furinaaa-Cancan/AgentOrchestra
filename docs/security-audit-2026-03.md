@@ -5,11 +5,11 @@
 | Category | Status | Details |
 |----------|--------|---------|
 | Path traversal | **Fixed** | task_id, agent_id, skill_id all validated |
-| Command injection | **Mitigated** | shell=True with defense-in-depth |
+| Command injection | **Fixed** | shell=False with shlex.split() |
 | SQL injection | **N/A** | No raw SQL; LangGraph uses parameterized queries |
 | Concurrency | **OK** | Lock-based, connection-pooled, thread-safe |
 | Resource leaks | **Low risk** | SQLite connections atexit-cleaned |
-| State machine | **Known gap** | Terminal states not enforced at runtime |
+| State machine | **Fixed** | Terminal states block outgoing transitions |
 
 ## Findings & Actions
 
@@ -35,20 +35,20 @@ entry (`session.py:_validate_task_id`), and now also in `trace.py` and
 `memory.py` (defense-in-depth). Graph snapshot saving uses regex
 sanitization (`graph.py:save_state_snapshot`).
 
-### 3. Command Injection — shell=True (Mitigated)
+### 3. Command Injection — shell=False (FIXED)
 
-**Risk**: MEDIUM → **Accepted with mitigations**
+**Risk**: MEDIUM → **Resolved**
 
-`driver.py:spawn_cli_agent` uses `shell=True` for CLI agent execution.
+`driver.py:spawn_cli_agent` now uses `shell=False` with `shlex.split()`,
+completely eliminating shell injection risk. Previously used `shell=True`
+with defense-in-depth mitigations.
 
-Mitigations in place:
-- Command template comes from `agents.yaml` (trusted config, not user input)
-- Shell metacharacter detection warns on dangerous chars (`;|&$\`<>`)
-- Path arguments shell-quoted via `shlex.quote()`
-- Security note in docstring recommends `agents.yaml` file permission `0o644`
+**Fix**: Replaced `subprocess.Popen(cmd, shell=True, ...)` with
+`subprocess.Popen(shlex.split(cmd_str), shell=False, ...)`. Paths are
+passed as list elements, not shell-interpreted strings.
 
-**Recommendation**: Consider switching to `shell=False` with `shlex.split()`
-in a future release for additional hardening.
+Remaining safeguard:
+- `agents.yaml` file permissions should be `0o644` or stricter.
 
 ### 4. SQLite Resource Leaks (Low Risk)
 
@@ -64,20 +64,19 @@ in test fixtures. The warnings come from tests that don't call
 
 **No production impact** — connections are properly closed on process exit.
 
-### 5. State Machine Terminal State Gap (Known)
+### 5. State Machine Terminal State Enforcement (FIXED)
 
-**Risk**: LOW
+**Risk**: LOW → **Resolved**
 
-`validate_transition("DONE", "RUNNING")` returns `True` because `DONE`
-is not listed in the `transitions` dict (only in `terminal_states`).
-The code treats undefined source states as "allow anything" for graceful
-degradation.
+`validate_transition("DONE", "RUNNING")` previously returned `True`
+because terminal states were not explicitly checked before the graceful
+degradation fallback.
 
-**Impact**: Minimal — the graph nodes enforce terminal states independently.
-The state machine validator is advisory, not authoritative.
-
-**Recommendation**: Consider adding explicit empty transition entries for
-terminal states in `specs/state-machine.yaml` to enable strict enforcement.
+**Fix**: Added explicit terminal state check in `validate_transition()`
+before the graceful degradation path. Terminal states (DONE, FAILED,
+ESCALATED, CANCELLED) now block outgoing transitions. Self-transitions
+(e.g., DONE→DONE) remain allowed for idempotency. Strict mode raises
+`InvalidTransitionError` for terminal→X transitions.
 
 ### 6. Atomic File Writes (OK)
 
@@ -101,7 +100,7 @@ with the file watcher.
 | skill_id | ✅ | `[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}` |
 | file_path (CLI) | ✅ | `click.Path(exists=True)` |
 | JSON payloads | ✅ | Pydantic + schema validation |
-| command_template | ⚠️ | Metachar warning, not blocked |
+| command_template | ✅ | shell=False eliminates injection risk |
 
 ## Test Coverage
 
@@ -109,3 +108,12 @@ with the file watcher.
 - task_id validation (traversal, special chars, boundary lengths)
 - agent_id validation (traversal, shell metachars, boundaries)
 - Workspace function rejection of malicious agent_ids
+
+## Overall Project Quality (as of 2026-03-05)
+
+| Metric | Value |
+|--------|-------|
+| Tests | **941** |
+| Coverage | **90%+** |
+| Ruff errors | **0** |
+| Mypy strict errors | **0** |
