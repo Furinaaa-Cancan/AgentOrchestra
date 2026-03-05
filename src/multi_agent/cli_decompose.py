@@ -448,7 +448,6 @@ def _run_decomposed(
 ):
     """Decompose → sequential sub-task build-review cycles → aggregate."""
     from multi_agent.cli import _make_config, _run_single_task, _run_watch_loop, _show_waiting
-    from multi_agent.decompose import topo_sort, topo_sort_grouped
     from multi_agent.meta_graph import aggregate_results, build_sub_task_state
     from multi_agent.orchestrator import TaskStartError, start_task
     from multi_agent.workspace import clear_runtime, release_lock, save_task_yaml
@@ -485,7 +484,7 @@ def _run_decomposed(
             return
 
     # Phase 3: Load checkpoint for crash recovery
-    from multi_agent.meta_graph import clear_checkpoint, load_checkpoint, save_checkpoint
+    from multi_agent.meta_graph import clear_checkpoint, save_checkpoint
     prior_results, completed_ids, failed_ids = _load_decompose_checkpoint(parent_task_id)
 
     total = len(sorted_tasks)

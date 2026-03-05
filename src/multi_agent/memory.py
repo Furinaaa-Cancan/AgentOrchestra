@@ -86,6 +86,16 @@ def add_pending_candidates(task_id: str, items: list[Any], *, actor: str) -> dic
     return {"task_id": task_id, "pending_count": len(pending), "added": added, "pending_file": str(p)}
 
 
+def _parse_existing_items(mem: Path) -> set[str]:
+    """Parse existing memory items from MEMORY.md file."""
+    existing: set[str] = set()
+    for line in mem.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("- "):
+            existing.add(line[2:].strip())
+    return existing
+
+
 def promote_pending_candidates(task_id: str, *, actor: str) -> dict[str, Any]:
     ensure_memory_file()
     p = pending_file(task_id)
@@ -101,14 +111,9 @@ def promote_pending_candidates(task_id: str, *, actor: str) -> dict[str, Any]:
         return {"task_id": task_id, "applied": 0, "reason": "pending.items is not a list"}
 
     mem = ensure_memory_file()
-    current = mem.read_text(encoding="utf-8")
-    existing = set()
-    for line in current.splitlines():
-        line = line.strip()
-        if line.startswith("- "):
-            existing.add(line[2:].strip())
+    existing = _parse_existing_items(mem)
 
-    to_apply = []
+    to_apply: list[str] = []
     for raw in items:
         if not isinstance(raw, str):
             continue

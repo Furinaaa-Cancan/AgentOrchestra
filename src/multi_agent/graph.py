@@ -611,6 +611,26 @@ def plan_node(state: WorkflowState) -> dict[str, Any]:
     return result
 
 
+def _check_total_timeout(state: WorkflowState, node: str) -> dict[str, Any] | None:
+    """Return error dict if total task duration exceeded, else None."""
+    task_started = state.get("task_started_at")
+    if not task_started:
+        return None
+    total_elapsed = time.time() - task_started
+    if total_elapsed <= MAX_TASK_DURATION_SEC:
+        return None
+    agent_key = "builder_id" if node == "build" else "reviewer_id"
+    return {
+        "error": (f"TOTAL_TIMEOUT: task running {int(total_elapsed)}s exceeds "
+                  f"{MAX_TASK_DURATION_SEC}s limit (node={node}, "
+                  f"agent={state.get(agent_key, '?')})"),
+        "final_status": "failed",
+        "conversation": [{"role": "orchestrator", "action": "total_timeout",
+                          "node": node, "elapsed": int(total_elapsed),
+                          "t": time.time()}],
+    }
+
+
 def _validate_builder_output(result: Any) -> dict[str, Any] | None:
     """Validate builder output structure. Returns error dict or None if valid."""
     errors: list[str] = []
@@ -668,19 +688,9 @@ def build_node(state: WorkflowState) -> dict[str, Any]:
     graph_hooks.fire_enter("build", state)
 
     # Total task duration guard (OWASP LLM10:2025 — DoW prevention)
-    task_started = state.get("task_started_at")
-    if task_started:
-        total_elapsed = time.time() - task_started
-        if total_elapsed > MAX_TASK_DURATION_SEC:
-            return {
-                "error": (f"TOTAL_TIMEOUT: task running {int(total_elapsed)}s exceeds "
-                          f"{MAX_TASK_DURATION_SEC}s limit (node=build, "
-                          f"agent={state.get('builder_id', '?')})"),
-                "final_status": "failed",
-                "conversation": [{"role": "orchestrator", "action": "total_timeout",
-                                  "node": "build", "elapsed": int(total_elapsed),
-                                  "t": time.time()}],
-            }
+    timeout_err = _check_total_timeout(state, "build")
+    if timeout_err:
+        return timeout_err
 
     builder_id = state.get("builder_id", "?")
     reviewer_id = state.get("reviewer_id", "?")
@@ -794,19 +804,9 @@ def review_node(state: WorkflowState) -> dict[str, Any]:
     graph_hooks.fire_enter("review", state)
 
     # Total task duration guard (OWASP LLM10:2025 — DoW prevention)
-    task_started = state.get("task_started_at")
-    if task_started:
-        total_elapsed = time.time() - task_started
-        if total_elapsed > MAX_TASK_DURATION_SEC:
-            return {
-                "error": (f"TOTAL_TIMEOUT: task running {int(total_elapsed)}s exceeds "
-                          f"{MAX_TASK_DURATION_SEC}s limit (node=review, "
-                          f"agent={state.get('reviewer_id', '?')})"),
-                "final_status": "failed",
-                "conversation": [{"role": "orchestrator", "action": "total_timeout",
-                                  "node": "review", "elapsed": int(total_elapsed),
-                                  "t": time.time()}],
-            }
+    timeout_err = _check_total_timeout(state, "review")
+    if timeout_err:
+        return timeout_err
 
     reviewer_id = state.get("reviewer_id", "?")
 
@@ -1054,6 +1054,27 @@ def _decide_reject_retry(
 
 # ── Node 4: Decide ────────────────────────────────────────
 
+def _block_rubber_stamp(
+    task_id: str, reviewer_output: dict[str, Any],
+) -> tuple[dict[str, Any], str]:
+    """Force request_changes when strict mode detects rubber-stamp approval."""
+    _log.warning(
+        "Strict mode blocks rubber-stamp approval for task %s; forcing request_changes.",
+        task_id,
+    )
+    reviewer_output = dict(reviewer_output)
+    feedback = str(reviewer_output.get("feedback", "")).strip()
+    if not feedback:
+        feedback = (
+            "审批被 strict 模式拦截：检测到 rubber-stamp 评审。"
+            "请给出独立验证证据（失败/通过用例、风险点、文件级检查结论）后再提交 approve。"
+        )
+    reviewer_output["decision"] = "request_changes"
+    reviewer_output["feedback"] = feedback
+    reviewer_output["_rubber_stamp_warning"] = True
+    return reviewer_output, "request_changes"
+
+
 @_graph_node("decide")
 def decide_node(state: WorkflowState) -> dict[str, Any]:
     graph_hooks.fire_enter("decide", state)
@@ -1091,21 +1112,9 @@ def decide_node(state: WorkflowState) -> dict[str, Any]:
         block_on_strict = bool(rubber_policy.get("block_on_strict", True))
 
     if decision == "approve" and rubber_stamp and strict_mode and block_on_strict:
-        _log.warning(
-            "Strict mode blocks rubber-stamp approval for task %s; forcing request_changes.",
-            state.get("task_id", "?"),
+        reviewer_output, decision = _block_rubber_stamp(
+            state.get("task_id", "?"), reviewer_output,
         )
-        reviewer_output = dict(reviewer_output)
-        feedback = str(reviewer_output.get("feedback", "")).strip()
-        if not feedback:
-            feedback = (
-                "审批被 strict 模式拦截：检测到 rubber-stamp 评审。"
-                "请给出独立验证证据（失败/通过用例、风险点、文件级检查结论）后再提交 approve。"
-            )
-        reviewer_output["decision"] = "request_changes"
-        reviewer_output["feedback"] = feedback
-        reviewer_output["_rubber_stamp_warning"] = True
-        decision = "request_changes"
 
     # Track retry effectiveness (DDI measurement)
     review_round = sum(

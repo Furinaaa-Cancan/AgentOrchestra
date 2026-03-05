@@ -479,6 +479,26 @@ def _run_single_task(app, task_id, requirement, skill, builder, reviewer,
     _run_watch_loop(app, config, task_id)
 
 
+def _resolve_done_task(app: Any, task_id: str | None) -> tuple[str, Any, Any]:
+    """Resolve task ID, config, and snapshot for `done` command. Exits on error."""
+    if task_id:
+        _validate_task_id(task_id)
+    else:
+        task_id = _detect_active_task(app)
+        if not task_id:
+            click.echo("❌ No active task found. Specify --task-id.", err=True)
+            sys.exit(1)
+
+    config = _make_config(task_id)
+    snapshot = app.get_state(config)
+
+    if not snapshot or not snapshot.next:
+        click.echo("❌ No pending interrupt for this task.", err=True)
+        sys.exit(1)
+
+    return task_id, config, snapshot
+
+
 def _read_done_output(role: str, file_path: str | None) -> dict[str, Any]:
     """Read output from --file, role-based outbox, or stdin. Exits on error."""
     output_data = None
@@ -529,21 +549,7 @@ def done(task_id: str | None, file_path: str | None):
     from multi_agent.graph import compile_graph
 
     app = compile_graph()
-
-    if task_id:
-        _validate_task_id(task_id)
-    else:
-        task_id = _detect_active_task(app)
-        if not task_id:
-            click.echo("❌ No active task found. Specify --task-id.", err=True)
-            sys.exit(1)
-
-    config = _make_config(task_id)
-    snapshot = app.get_state(config)
-
-    if not snapshot or not snapshot.next:
-        click.echo("❌ No pending interrupt for this task.", err=True)
-        sys.exit(1)
+    task_id, config, snapshot = _resolve_done_task(app, task_id)
 
     # Determine current role and agent from interrupt metadata
     role = "builder"

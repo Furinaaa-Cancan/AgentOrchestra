@@ -101,27 +101,41 @@ VALID_CONFIG_KEYS = {
 }
 
 
+def _validate_numeric_field(
+    data: dict[str, Any], key: str, types: tuple[type, ...],
+    *, min_val: float | None = None, max_val: float | None = None,
+    type_msg: str = "must be a number",
+    range_msg: str | None = None,
+) -> str | None:
+    """Validate a numeric config field. Returns warning string or None."""
+    if key not in data:
+        return None
+    val = data[key]
+    if not isinstance(val, types):
+        return f"{key} {type_msg}"
+    if max_val is not None and min_val is not None and not (min_val <= val <= max_val):
+        return range_msg or f"{key}={val} out of range ({int(min_val)}-{int(max_val)})"
+    if min_val is not None and max_val is None and val < min_val:
+        return range_msg or f"{key} must be >= {min_val}, got {val}"
+    return None
+
+
 def validate_config(data: dict[str, Any]) -> list[str]:
     """Validate .ma.yaml config structure. Returns list of warnings."""
     warnings_list: list[str] = []
     unknown = set(data.keys()) - VALID_CONFIG_KEYS
     if unknown:
         warnings_list.append(f"Unknown config keys: {', '.join(sorted(unknown))}")
-    if "retry_budget" in data:
-        if not isinstance(data["retry_budget"], int):
-            warnings_list.append("retry_budget must be an integer")
-        elif not (0 <= data["retry_budget"] <= 20):
-            warnings_list.append(f"retry_budget={data['retry_budget']} out of range (0-20)")
-    if "timeout_sec" in data:
-        if not isinstance(data["timeout_sec"], (int, float)):
-            warnings_list.append("timeout_sec must be a number")
-        elif data["timeout_sec"] <= 0:
-            warnings_list.append(f"timeout_sec must be positive, got {data['timeout_sec']}")
-    if "watch_interval" in data:
-        if not isinstance(data["watch_interval"], (int, float)):
-            warnings_list.append("watch_interval must be a number")
-        elif data["watch_interval"] < 0.1:
-            warnings_list.append(f"watch_interval must be >= 0.1s, got {data['watch_interval']}")
+
+    for w in (
+        _validate_numeric_field(data, "retry_budget", (int,), min_val=0, max_val=20, type_msg="must be an integer"),
+        _validate_numeric_field(data, "timeout_sec", (int, float), min_val=0.001,
+                               range_msg=f"timeout_sec must be positive, got {data.get('timeout_sec')}"),
+        _validate_numeric_field(data, "watch_interval", (int, float), min_val=0.1,
+                               range_msg=f"watch_interval must be >= 0.1s, got {data.get('watch_interval')}"),
+    ):
+        if w:
+            warnings_list.append(w)
     return warnings_list
 
 

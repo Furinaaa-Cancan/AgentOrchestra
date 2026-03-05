@@ -157,9 +157,44 @@ def _show_next_agent(next_status: Any, ts: str) -> None:
         click.echo('             "帮我完成 @.multi-agent/TASK.md 里的任务"')
 
 
+def _process_outbox(poller, role, agent, status, app, task_id, ts, manage_lock):
+    """Check outbox for matching role output, validate, and resume. Returns 'return' to stop loop."""
+    from multi_agent.orchestrator import resume_task
+
+    for detected_role, data in poller.check_once():
+        if detected_role == role:
+            step_label = "Build" if role == "builder" else "Review"
+            click.echo(f"[{ts}] 📥 {step_label} 完成 ({agent})")
+            try:
+                data = _normalize_resume_output(role, data, status.values)
+            except ValueError as e:
+                click.echo(f"[{ts}] ❌ {e}", err=True)
+                click.echo(f"[{ts}] 🔁 请修复 outbox/{role}.json 后重试", err=True)
+                continue
+            v_errors = validate_outbox_data(role, data)
+            if v_errors:
+                click.echo(f"[{ts}] ⚠️  Output warnings:", err=True)
+                for ve in v_errors:
+                    click.echo(f"             - {ve}", err=True)
+            try:
+                next_status = resume_task(app, task_id, data)
+            except Exception as e:
+                if manage_lock:
+                    release_lock()
+                    clear_runtime()
+                click.echo(f"[{ts}] ❌ Error: {e}", err=True)
+                save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
+                return "return"
+
+            if not next_status.is_terminal and next_status.waiting_role:
+                _show_next_agent(next_status, ts)
+            break
+    return "continue"
+
+
 def _run_watch_loop(app, config, task_id: str, interval: float = 2.0, manage_lock: bool = True):
     """Shared watch loop — polls outbox/ and auto-submits output."""
-    from multi_agent.orchestrator import get_task_status, resume_task
+    from multi_agent.orchestrator import get_task_status
     from multi_agent.watcher import OutboxPoller
 
     poller = OutboxPoller(poll_interval=interval)
@@ -183,34 +218,9 @@ def _run_watch_loop(app, config, task_id: str, interval: float = 2.0, manage_loc
             role = status.waiting_role or "builder"
             agent = status.waiting_agent or "?"
 
-            for detected_role, data in poller.check_once():
-                if detected_role == role:
-                    step_label = "Build" if role == "builder" else "Review"
-                    click.echo(f"[{ts}] 📥 {step_label} 完成 ({agent})")
-                    try:
-                        data = _normalize_resume_output(role, data, status.values)
-                    except ValueError as e:
-                        click.echo(f"[{ts}] ❌ {e}", err=True)
-                        click.echo(f"[{ts}] 🔁 请修复 outbox/{role}.json 后重试", err=True)
-                        continue
-                    v_errors = validate_outbox_data(role, data)
-                    if v_errors:
-                        click.echo(f"[{ts}] ⚠️  Output warnings:", err=True)
-                        for ve in v_errors:
-                            click.echo(f"             - {ve}", err=True)
-                    try:
-                        next_status = resume_task(app, task_id, data)
-                    except Exception as e:
-                        if manage_lock:
-                            release_lock()
-                            clear_runtime()
-                        click.echo(f"[{ts}] ❌ Error: {e}", err=True)
-                        save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
-                        return
-
-                    if not next_status.is_terminal and next_status.waiting_role:
-                        _show_next_agent(next_status, ts)
-                    break
+            result = _process_outbox(poller, role, agent, status, app, task_id, ts, manage_lock)
+            if result == "return":
+                return
 
             time.sleep(interval)
     except KeyboardInterrupt:
