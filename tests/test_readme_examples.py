@@ -19,7 +19,7 @@ class TestReadmeExamples:
         runner = CliRunner()
         result = runner.invoke(main, ["--help"])
         assert result.exit_code == 0
-        assert "Multi-Agent" in result.output
+        assert "Multi-agent" in result.output
 
     def test_go_help_contains_options(self):
         runner = CliRunner()

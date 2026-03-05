@@ -201,7 +201,7 @@ def _sigterm_handler(signum: int, frame: Any) -> None:
 @click.group()
 @click.option("--verbose", is_flag=True, default=False, help="Show full traceback on errors")
 def main(verbose: bool) -> None:
-    """my — Multi-Agent 协作 CLI. 一条命令协调多个 IDE AI."""
+    """my — Multi-agent Yielding Orchestra. 你的 AI 乐队，一条命令开演."""
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
 

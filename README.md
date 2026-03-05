@@ -1,8 +1,19 @@
-# AgentOrchestra
+# MY — Multi-agent Yielding Orchestra
 
-IDE 无关的多 Agent 编排框架 (v0.6.0)。  
-基于 **LangGraph 单一状态源（SSOT）** 驱动 4 节点工作流（plan → build → review → decide），  
-支持全自动 CLI 和手动 IDE 两种运行模式。
+**你的 AI 乐队，一条命令开演。**
+
+每个 AI IDE 是一位乐手，各司其职，合在一起演奏出完整的代码交付：
+
+| 乐手 | 角色 | 干什么 |
+|------|------|--------|
+| Windsurf | 吉他手 (Builder) | 写代码、实现功能 |
+| Antigravity | 贝斯手 (Reviewer) | 独立审查、质量把关 |
+| Cursor | 候补乐手 | Builder 或 Reviewer 均可 |
+| Claude / Codex | 自动鼓机 | CLI 全自动执行 |
+| Codex | 指挥 (Orchestrator) | 编排、决策、重试 |
+
+基于 **LangGraph 单一状态源（SSOT）** 驱动 4 节点工作流，  
+支持全自动 CLI 和手动 IDE 两种运行模式。v0.6.0
 
 ---
 
@@ -428,8 +439,9 @@ CC BY-NC-SA 4.0，详见 `LICENSE`。
 
 ## English Summary
 
-**AgentOrchestra** is an IDE-agnostic multi-agent orchestration framework (v0.6.0).
-It drives a LangGraph 4-node workflow (plan → build → review → decide) with:
+**MY — Multi-agent Yielding Orchestra** is your AI band for code delivery (v0.6.0).
+Each AI IDE is a band member — builder writes code, reviewer checks quality,
+orchestrator conducts the show. One command to start the performance:
 - Two modes: automated (`my go`) and IDE-first (`my session`)
 - Task decomposition with dependency-aware execution
 - CLI agent auto-spawning with graceful degradation
