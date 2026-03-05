@@ -78,12 +78,12 @@ def handle_errors(f: _F) -> _F:
 def _log_error_to_file(command: str, error: Exception) -> None:
     """Write error details to .multi-agent/logs/."""
     try:
-        from datetime import datetime
+        from datetime import UTC, datetime
 
         from multi_agent.config import workspace_dir
         logs_dir = workspace_dir() / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         log_file = logs_dir / f"error-{ts}.log"
         log_file.write_text(
             f"command: {command}\nerror: {error}\n\n{traceback.format_exc()}",

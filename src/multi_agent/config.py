@@ -228,8 +228,9 @@ class ProjectSettings:
                         self._merged[k] = roles[k]
             if "review_policy" in mode_cfg:
                 self._merged["review_policy"] = mode_cfg["review_policy"]
-        except Exception:
-            pass
+        except Exception as exc:
+            import warnings
+            warnings.warn(f"Failed to load workmode.yaml: {exc}", stacklevel=2)
 
     def get(self, key: str, default: Any = None) -> Any:
         return self._merged.get(key, default)

@@ -77,7 +77,6 @@ class SessionRoles:
         }
 
 
-
 def _load_json(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
@@ -509,8 +508,6 @@ def _parse_json_payload(raw: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             continue
     raise ValueError("failed to parse JSON object from payload")
-
-
 
 
 def _normalize_reviewer_decision(

@@ -140,7 +140,7 @@ def _show_next_agent(next_status: Any, ts: str) -> None:
         reviewer_out = next_status.values.get("reviewer_output") or {}
         feedback = reviewer_out.get("feedback", "") if isinstance(reviewer_out, dict) else ""
         budget = next_status.values.get("retry_budget", 2)
-        click.echo(f"[{ts}] � Reviewer 要求修改 ({retry_n}/{budget}):")
+        click.echo(f"[{ts}] 🔄 Reviewer 要求修改 ({retry_n}/{budget}):")
         if feedback:
             click.echo(f"             {feedback}")
     from multi_agent.driver import can_use_cli, get_agent_driver, spawn_cli_agent
