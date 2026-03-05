@@ -28,6 +28,27 @@ class TestTemplateDir:
         assert (d / "builder.md.j2").exists()
         assert (d / "reviewer.md.j2").exists()
 
+    def test_fallback_to_root_dir(self, tmp_path):
+        """Package templates missing → falls back to root_dir/templates (lines 29-31)."""
+        from unittest.mock import patch
+        templates = tmp_path / "templates"
+        templates.mkdir()
+        (templates / "builder.md.j2").write_text("test")
+        with patch("multi_agent.prompt.__file__", str(tmp_path / "nonexistent_pkg" / "prompt.py")), \
+             patch("multi_agent.prompt.root_dir", return_value=tmp_path):
+            result = _template_dir()
+        assert result == templates
+
+    def test_no_templates_raises(self, tmp_path):
+        """Neither package nor root has templates → FileNotFoundError (line 32)."""
+        from unittest.mock import patch
+
+        import pytest as _pt
+        with patch("multi_agent.prompt.__file__", str(tmp_path / "fake" / "prompt.py")), \
+             patch("multi_agent.prompt.root_dir", return_value=tmp_path / "no_root"), \
+             _pt.raises(FileNotFoundError, match="templates"):
+            _template_dir()
+
 
 class TestRenderBuilderPrompt:
     def test_basic_render(self):
