@@ -92,6 +92,16 @@ def validate_transition(from_state: str, to_state: str, *, strict: bool = False)
     if from_state == to_state:
         return True  # self-transition always allowed (idempotent)
 
+    # Terminal states must not have outgoing transitions
+    if from_state in terminal_states():
+        if strict:
+            raise InvalidTransitionError(from_state, to_state, frozenset())
+        _log.warning(
+            "illegal state transition %s → %s (terminal state)",
+            from_state, to_state,
+        )
+        return False
+
     allowed = valid_targets(from_state)
 
     # If spec doesn't define transitions for from_state, allow anything

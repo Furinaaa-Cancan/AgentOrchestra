@@ -88,12 +88,18 @@ class TestValidateTransition:
     def test_unknown_source_state_allows_anything(self):
         assert validate_transition("NONEXISTENT", "WHATEVER") is True
 
-    def test_terminal_state_with_no_transitions_allows_gracefully(self):
-        # DONE is terminal but not in transitions dict → graceful degradation allows
-        assert validate_transition("DONE", "RUNNING") is True
+    def test_terminal_state_blocks_transition(self):
+        assert validate_transition("DONE", "RUNNING") is False
 
-    def test_cancelled_state_with_no_transitions_allows_gracefully(self):
-        assert validate_transition("CANCELLED", "RUNNING") is True
+    def test_cancelled_blocks_transition(self):
+        assert validate_transition("CANCELLED", "RUNNING") is False
+
+    def test_terminal_strict_raises(self):
+        with pytest.raises(InvalidTransitionError):
+            validate_transition("DONE", "QUEUED", strict=True)
+
+    def test_terminal_self_transition_allowed(self):
+        assert validate_transition("DONE", "DONE") is True
 
 
 class TestSpecMissing:

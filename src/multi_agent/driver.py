@@ -152,10 +152,9 @@ def spawn_cli_agent(
     If same agent+role is already running, returns the existing thread.
 
     Security Note:
-        Uses shell=True for command execution. The command_template comes from
-        agents.yaml and MUST be trusted. Malicious modification of agents.yaml
-        could lead to command injection. Ensure agents.yaml has proper file
-        permissions (0o644 or stricter) and is not writable by untrusted users.
+        Uses shell=False with shlex.split() for command execution, eliminating
+        shell injection risk. The command_template comes from agents.yaml.
+        Ensure agents.yaml has proper file permissions (0o644 or stricter).
     """
     # Task 10: concurrency protection
     lock_key = f"{agent_id}:{role}"
@@ -165,32 +164,23 @@ def spawn_cli_agent(
             logger.info("CLI agent %s already running as %s, returning existing thread", agent_id, role)
             return existing
 
-    # C3: Validate command_template for dangerous shell metacharacters
-    # This is defense-in-depth; primary security relies on trusted agents.yaml
-    dangerous_chars = [";", "|", "&", "$", "`", "(", ")", "<", ">", "\n"]
-    if any(char in command_template for char in dangerous_chars):
-        logger.warning(
-            "Command template for agent '%s' contains shell metacharacters. "
-            "Ensure agents.yaml is from a trusted source.", agent_id
-        )
-
     task_file = str(workspace_dir() / "TASK.md")
     outbox_file = str(outbox_dir() / f"{role}.json")
 
-    # D1: Shell-quote paths to prevent injection/breakage from spaces
-    # or metacharacters in project paths (OWASP command injection).
-    cmd = command_template.format(
-        task_file=shlex.quote(task_file),
-        outbox_file=shlex.quote(outbox_file),
+    # D1+C3: Build command list with shell=False to eliminate injection risk.
+    # Paths are inserted literally (no quoting needed without shell).
+    cmd_str = command_template.format(
+        task_file=task_file,
+        outbox_file=outbox_file,
     )
+    cmd_list = shlex.split(cmd_str)
 
     def _run() -> None:
         proc = None
         try:
-            # Task 9: stream stderr in real-time instead of capture_output
             proc = subprocess.Popen(
-                cmd,
-                shell=True,
+                cmd_list,
+                shell=False,
                 cwd=project_dir or str(Path.cwd()),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

@@ -104,7 +104,7 @@ class TestSpawnCliAgent:
         outbox_file = outbox_dir / "builder.json"
 
         # Command that writes JSON directly to {outbox_file}
-        cmd = 'echo \'{{"status": "completed", "summary": "test"}}\' > {outbox_file}'
+        cmd = "python3 -c 'import json,sys;open(sys.argv[1],\"w\").write(json.dumps(dict(status=\"completed\",summary=\"test\")))' {outbox_file}"
 
         with patch("multi_agent.driver.workspace_dir", return_value=tmp_path), \
              patch("multi_agent.driver.outbox_dir", return_value=outbox_dir):
@@ -121,7 +121,7 @@ class TestSpawnCliAgent:
         outbox_dir.mkdir()
 
         # Command that exits with error and no JSON output
-        cmd = "exit 1"
+        cmd = "python3 -c \"import sys; sys.exit(1)\""
 
         with patch("multi_agent.driver.workspace_dir", return_value=tmp_path), \
              patch("multi_agent.driver.outbox_dir", return_value=outbox_dir):
@@ -139,7 +139,7 @@ class TestSpawnCliAgent:
         outbox_dir = tmp_path / "outbox"
         outbox_dir.mkdir()
 
-        cmd = "echo 'not json at all'"
+        cmd = "python3 -c \"print('not json at all')\""
 
         with patch("multi_agent.driver.workspace_dir", return_value=tmp_path), \
              patch("multi_agent.driver.outbox_dir", return_value=outbox_dir):
