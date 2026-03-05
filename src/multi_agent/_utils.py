@@ -7,8 +7,8 @@ independently implemented in session.py, cli.py, and other modules.
 from __future__ import annotations
 
 import re
-from typing import Any
 from datetime import UTC
+from typing import Any
 
 # ── Input Validation ──────────────────────────────────────
 
@@ -65,7 +65,7 @@ def is_terminal_final_status(value: object) -> bool:
 
 def now_utc() -> str:
     """Return current UTC time as ISO-8601 string (seconds precision)."""
-    from datetime import datetime, timezone
+    from datetime import datetime
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
