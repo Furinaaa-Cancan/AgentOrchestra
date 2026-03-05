@@ -354,3 +354,60 @@ class TestResolveReviewerWarnings:
             result = resolve_reviewer(agents, contract, builder_id="builder-a")
         assert result == "fallback-b"
         assert any("filters bypassed" in r.message for r in caplog.records)
+
+
+# ── Uncovered lines: legacy profiles.json fallback, eligible fallback, health issues ──
+
+
+class TestLoadRegistryLegacyFallback:
+    """Cover lines 35-40: legacy profiles.json fallback when agents.yaml missing."""
+
+    def test_legacy_profiles_json(self, tmp_path):
+        # No agents.yaml, but profiles.json exists
+        import json
+        profiles = tmp_path / "agents" / "profiles.json"
+        profiles.parent.mkdir(parents=True)
+        profiles.write_text(json.dumps({"agents": [{"id": "legacy-agent"}]}))
+        with patch("multi_agent.router.agents_profile_path", return_value=profiles):
+            reg = load_registry(path=tmp_path / "nonexistent.yaml")
+        assert any(a["id"] == "legacy-agent" for a in reg.get("agents", []))
+
+    def test_no_registry_files(self, tmp_path):
+        with patch("multi_agent.router.agents_profile_path", return_value=tmp_path / "no.json"):
+            reg = load_registry(path=tmp_path / "no.yaml")
+        assert reg["agents"] == []
+
+
+class TestResolveBuilderNoAgents:
+    """Cover line 126: no agents raises ValueError."""
+
+    def test_no_agents_raises(self):
+        contract = _make_contract()
+        with patch("multi_agent.router.get_defaults", return_value={}), \
+             pytest.raises(ValueError, match="No agent"):
+            resolve_builder([], contract)
+
+
+class TestResolveReviewerEligibleFallback:
+    """Cover line 161: eligible reviewer by capabilities."""
+
+    def test_eligible_reviewer_picked(self):
+        agents = [
+            AgentProfile(id="builder-1", capabilities=["implementation"]),
+            AgentProfile(id="reviewer-1", capabilities=["review"]),
+        ]
+        contract = _make_contract()
+        with patch("multi_agent.router.get_defaults", return_value={}):
+            result = resolve_reviewer(agents, contract, builder_id="builder-1")
+        assert result == "reviewer-1"
+
+
+class TestCheckAgentHealthIssues:
+    """Cover line 218: low queue_health issue detection."""
+
+    def test_low_queue_health_reported(self):
+        from multi_agent.router import check_agent_health
+        agents = [AgentProfile(id="sick", capabilities=["implementation"],
+                               reliability=0.9, queue_health=0.3)]
+        health = check_agent_health(agents)
+        assert any("queue_health" in issue for h in health for issue in h["issues"])

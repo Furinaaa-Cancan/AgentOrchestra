@@ -152,3 +152,34 @@ class TestFullTransitionChain:
         assert validate_transition("RUNNING", "ESCALATED", strict=True) is True
         assert validate_transition("ESCALATED", "ASSIGNED", strict=True) is True
         assert validate_transition("ESCALATED", "CANCELLED", strict=True) is True
+
+
+# ── Uncovered lines: missing spec, invalid transitions key (30-32, 38-39) ──
+
+
+class TestLoadSpecEdgeCases:
+    """Cover lines 30-32, 38-39: missing spec file and invalid transitions key."""
+
+    def test_missing_spec_file(self):
+        """state-machine.yaml not found → validation disabled (lines 30-32)."""
+        from unittest.mock import patch as _p
+
+        from multi_agent.state_machine import _load_spec
+        reset_cache()
+        with _p("multi_agent.config.root_dir", return_value=__import__("pathlib").Path("/nonexistent")):
+            spec = _load_spec()
+        assert spec["transitions"] == {}
+        assert spec["terminal_states"] == []
+
+    def test_invalid_transitions_key(self, tmp_path):
+        """transitions is not a dict → replaced with empty dict (lines 38-39)."""
+        from unittest.mock import patch as _p
+
+        from multi_agent.state_machine import _load_spec
+        reset_cache()
+        spec_dir = tmp_path / "specs"
+        spec_dir.mkdir()
+        (spec_dir / "state-machine.yaml").write_text("transitions: not_a_dict\nterminal_states: [DONE]")
+        with _p("multi_agent.config.root_dir", return_value=tmp_path):
+            spec = _load_spec()
+        assert spec["transitions"] == {}
