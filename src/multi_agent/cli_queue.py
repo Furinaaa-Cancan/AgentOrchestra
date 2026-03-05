@@ -3,10 +3,10 @@
 Registered onto the main Click group via register_queue_commands().
 
 Usage:
-    ma queue list tasks.md           # List tasks in a queue file
-    ma queue run tasks.md            # Execute all tasks sequentially
-    ma queue run tasks.md --start 5  # Start from task #5
-    ma queue run tasks.md --dry-run  # Preview without executing
+    my queue list tasks.md           # List tasks in a queue file
+    my queue run tasks.md            # Execute all tasks sequentially
+    my queue run tasks.md --start 5  # Start from task #5
+    my queue run tasks.md --dry-run  # Preview without executing
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compatibility wrapper for the new `ma session` workflow."""
+"""Compatibility wrapper for the new `my session` workflow."""
 
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ def command_start(args: argparse.Namespace) -> int:
         "current_role": payload.get("current_role"),
         "active_prompt": payload.get("active_prompt", ""),
         "prompts": payload.get("prompt_paths", {}),
-        "note": "ide_hub is now a thin wrapper over `ma session`.",
+        "note": "ide_hub is now a thin wrapper over `my session`.",
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
@@ -84,7 +84,7 @@ def command_status(args: argparse.Namespace) -> int:
         print("ERROR: task.task_id missing", file=sys.stderr)
         return 1
     payload = session_status(task_id)
-    payload["note"] = "Use `ma session status --task-id ...` directly."
+    payload["note"] = "Use `my session status --task-id ...` directly."
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
@@ -115,13 +115,13 @@ def command_submit(args: argparse.Namespace) -> int:
             pathlib.Path(temp_path).unlink(missing_ok=True)
 
     payload["status"] = "submitted"
-    payload["note"] = "Use `ma session push --task-id ... --agent ... --file ...` directly."
+    payload["note"] = "Use `my session push --task-id ... --agent ... --file ...` directly."
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Tri-IDE wrapper (delegates to ma session)")
+    parser = argparse.ArgumentParser(description="Tri-IDE wrapper (delegates to my session)")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("start", help="初始化会话并生成提示词")

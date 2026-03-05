@@ -1,7 +1,7 @@
-# 🚀 AgentOrchestra 一夜任务队列 — 100 条详细提示词
+# 🚀 MyGO 一夜任务队列 — 100 条详细提示词
 
 > 每条提示词都包含：实现要求、严格评审标准、验证步骤
-> 用法: `ma go "提示词内容" --builder windsurf --reviewer cursor`
+> 用法: `my go "提示词内容" --builder windsurf --reviewer cursor`
 
 ---
 
@@ -147,7 +147,7 @@ cancel 命令在 cli.py 中只写 task YAML 和释放锁，但不更新 graph st
 - 全量 pytest tests/ -v 通过
 
 验证步骤:
-1. python -c "from multi_agent.schema import SubTask; print(SubTask(id='test', description='t').priority)"
+1. python -c "from multi_agent.schemy import SubTask; print(SubTask(id='test', description='t').priority)"
 2. python -m pytest tests/test_schema.py tests/test_decompose.py tests/test_meta_graph.py -v
 3. python -m pytest tests/ -v
 ```
@@ -356,7 +356,7 @@ CLI agent 的 stderr 只在失败时截取前 200 字符，正常运行时完全
 - 全量 pytest tests/ -v 通过
 
 验证步骤:
-1. python -c "from multi_agent.schema import Task; t = Task(task_id='task-test01', trace_id='0'*16, skill_id='code-implement', parent_task_id='task-parent-01'); print(t.parent_task_id)"
+1. python -c "from multi_agent.schemy import Task; t = Task(task_id='task-test01', trace_id='0'*16, skill_id='code-implement', parent_task_id='task-parent-01'); print(t.parent_task_id)"
 2. python -m pytest tests/ -v
 ```
 
@@ -417,20 +417,20 @@ CLI agent 的 stderr 只在失败时截取前 200 字符，正常运行时完全
 3. python -m pytest tests/ -v
 ```
 
-### 15. cli.py — 增加 ma history 命令查看历史任务
+### 15. cli.py — 增加 my history 命令查看历史任务
 
 ```
-在 src/multi_agent/cli.py 中新增 ma history 子命令。
+在 src/multi_agent/cli.py 中新增 my history 子命令。
 
 实现要求:
-1. 命令格式: ma history [--limit N] [--status STATUS]
+1. 命令格式: my history [--limit N] [--status STATUS]
 2. 扫描 .multi-agent/tasks/ 目录下的所有 .yaml 文件
 3. 按时间倒序显示:
    - task_id
    - status (active/approved/failed/cancelled)
    - 创建时间 (从文件 mtime)
-4. 支持 --status 过滤: ma history --status failed
-5. 支持 --limit 限制数量: ma history --limit 10
+4. 支持 --status 过滤: my history --status failed
+5. 支持 --limit 限制数量: my history --limit 10
 6. 无历史时显示友好提示
 
 严格评审标准:
@@ -444,7 +444,7 @@ CLI agent 的 stderr 只在失败时截取前 200 字符，正常运行时完全
 - 全量 pytest tests/ -v 通过
 
 验证步骤:
-1. ma history --help 确认命令存在
+1. my history --help 确认命令存在
 2. python -m pytest tests/ -v
 ```
 
@@ -561,7 +561,7 @@ build_sub_task_state 只传递 prior_results 的 summary 和 changed_files，
 2. python -m pytest tests/ -v
 ```
 
-### 20. decompose.py — read_decompose_result 增加 schema 验证
+### 20. decompose.py — read_decompose_result 增加 schemy 验证
 
 ```
 增强 src/multi_agent/decompose.py 的 read_decompose_result 函数的验证。
@@ -788,7 +788,7 @@ agent 可能返回格式正确但内容无意义的分解结果，比如:
 
 实现要求:
 1. DecomposeResult 新增字段:
-   - version: str = "1.0"（分解结果的 schema 版本）
+   - version: str = "1.0"（分解结果的 schemy 版本）
    - metadata: dict[str, Any] = {}（附加元数据，如分解用时、使用的 agent）
    - created_at: str = Field(default_factory=_now_utc)（创建时间）
 2. cache_decompose 时自动填充 metadata.agent 和 metadata.duration
@@ -974,11 +974,11 @@ agent 可能返回格式正确但内容无意义的分解结果，比如:
 ### 34. test_cli.py — go 命令参数组合测试
 
 ```
-新建 tests/test_cli_go.py，对 ma go 命令的所有参数组合进行测试。
+新建 tests/test_cli_go.py，对 my go 命令的所有参数组合进行测试。
 
 实现要求:
 使用 CliRunner 测试以下场景:
-1. 基本调用: ma go "requirement"
+1. 基本调用: my go "requirement"
 2. 指定 builder/reviewer: --builder windsurf --reviewer cursor
 3. 指定 skill: --skill test-and-review
 4. 指定 task-id: --task-id task-custom-01
@@ -1006,7 +1006,7 @@ agent 可能返回格式正确但内容无意义的分解结果，比如:
 ### 35. test_cli.py — done 命令测试
 
 ```
-新建 tests/test_cli_done.py，对 ma done 命令进行全面测试。
+新建 tests/test_cli_done.py，对 my done 命令进行全面测试。
 
 实现要求:
 使用 CliRunner 测试:
@@ -1031,7 +1031,7 @@ agent 可能返回格式正确但内容无意义的分解结果，比如:
 ### 36. test_cli.py — cancel 命令测试
 
 ```
-新建 tests/test_cli_cancel.py，对 ma cancel 命令进行测试。
+新建 tests/test_cli_cancel.py，对 my cancel 命令进行测试。
 
 实现要求:
 使用 CliRunner 测试:
@@ -1057,7 +1057,7 @@ agent 可能返回格式正确但内容无意义的分解结果，比如:
 ### 37. test_cli.py — status 命令测试
 
 ```
-新建 tests/test_cli_status.py，对 ma status 命令进行测试。
+新建 tests/test_cli_status.py，对 my status 命令进行测试。
 
 实现要求:
 使用 CliRunner 测试:
@@ -1083,7 +1083,7 @@ agent 可能返回格式正确但内容无意义的分解结果，比如:
 ### 38. test_cli.py — watch 命令测试
 
 ```
-新建 tests/test_cli_watch.py，对 ma watch 命令进行测试。
+新建 tests/test_cli_watch.py，对 my watch 命令进行测试。
 
 实现要求:
 使用 CliRunner 测试:
@@ -1255,7 +1255,7 @@ agent 可能返回格式正确但内容无意义的分解结果，比如:
 2. python -m pytest tests/ -v
 ```
 
-### 45. test_schema.py — schema 验证测试
+### 45. test_schema.py — schemy 验证测试
 
 ```
 增强 tests/test_schema.py 的 Pydantic 模型验证测试。
@@ -1388,8 +1388,8 @@ agent 可能返回格式正确但内容无意义的分解结果，比如:
 
 实现要求:
 1. 提取 README.md 中的所有 bash 和 python 代码块
-2. 验证 ma --help 可运行
-3. 验证 ma go --help 包含所有选项
+2. 验证 my --help 可运行
+3. 验证 my go --help 包含所有选项
 4. 验证版本号一致: __version__ == pyproject.toml version
 5. 验证 pytest tests/ -v 的测试数量与 README badge 一致
 
@@ -1545,7 +1545,7 @@ agent 可能返回格式正确但内容无意义的分解结果，比如:
 
 实现要求:
 1. 每个渲染的 prompt 在末尾添加 HTML 注释:
-   <!-- AgentOrchestra v{version} | prompt: builder/reviewer | rendered: {timestamp} -->
+   <!-- MyGO v{version} | prompt: builder/reviewer | rendered: {timestamp} -->
 2. 不影响 IDE AI 的解析（HTML 注释在 markdown 中不可见）
 3. 新增函数 get_prompt_metadata() -> str
 
@@ -1635,10 +1635,10 @@ agent 可能返回格式正确但内容无意义的分解结果，比如:
 ### 60. 增加 prompt 渲染的干运行命令
 
 ```
-在 cli.py 中新增 ma render 命令，用于预览 prompt 而不执行。
+在 cli.py 中新增 my render 命令，用于预览 prompt 而不执行。
 
 实现要求:
-1. 命令格式: ma render "requirement" [--skill SKILL] [--role builder|reviewer]
+1. 命令格式: my render "requirement" [--skill SKILL] [--role builder|reviewer]
 2. 渲染 prompt 并输出到 stdout（不写入 inbox，不启动 graph）
 3. 用于调试和优化 prompt
 4. 支持 --role reviewer 时需要提供 --builder-output FILE
@@ -1650,7 +1650,7 @@ agent 可能返回格式正确但内容无意义的分解结果，比如:
 - 全量 pytest tests/ -v 通过
 
 验证步骤:
-1. ma render --help
+1. my render --help
 2. python -m pytest tests/ -v
 ```
 
@@ -1768,7 +1768,7 @@ agent 可能返回格式正确但内容无意义的分解结果，比如:
 1. _find_root 失败时，warning 包含:
    - 当前 CWD
    - 扫描过的目录列表（前 5 个）
-   - 建议: "运行 ma init 初始化项目" 或 "设置 MA_ROOT 环境变量"
+   - 建议: "运行 my init 初始化项目" 或 "设置 MA_ROOT 环境变量"
 2. MA_ROOT 目录不存在时抛 FileNotFoundError（而非 warning）
 3. MA_ROOT 不是绝对路径时转换为绝对路径
 
@@ -1923,7 +1923,7 @@ OutboxPoller.check_once 增加文件大小限制。
    返回 {"available": bool, "driver": str, "binary_found": bool}
 2. CLI 驱动: 检查二进制是否存在
 3. File 驱动: 总是 available
-4. cli.py 新增 ma agents 命令显示所有 agent 状态
+4. cli.py 新增 my agents 命令显示所有 agent 状态
 
 严格评审标准:
 - 新增测试
@@ -1946,7 +1946,7 @@ OutboxPoller.check_once 增加文件大小限制。
    - store.db 可读写
    - 无孤立锁
    - 无超大文件
-3. cli.py 新增 ma doctor 命令
+3. cli.py 新增 my doctor 命令
 
 严格评审标准:
 - 新增测试
@@ -1975,10 +1975,10 @@ OutboxPoller.check_once 增加文件大小限制。
 1. python -m pytest tests/ -v
 ```
 
-### 75. cli.py — 增加 ma init 命令
+### 75. cli.py — 增加 my init 命令
 
 ```
-新增 ma init 命令初始化项目。
+新增 my init 命令初始化项目。
 
 实现要求:
 1. 创建完整的项目结构:
@@ -1995,7 +1995,7 @@ OutboxPoller.check_once 增加文件大小限制。
 - 全量 pytest tests/ -v 通过
 
 验证步骤:
-1. ma init --help
+1. my init --help
 2. python -m pytest tests/ -v
 ```
 
@@ -2035,9 +2035,9 @@ OutboxPoller.check_once 增加文件大小限制。
 实现要求:
 1. 分步骤说明从安装到第一个任务完成的全过程:
    - Step 1: pip install
-   - Step 2: ma init
+   - Step 2: my init
    - Step 3: 配置 agents.yaml
-   - Step 4: ma go "你的第一个需求"
+   - Step 4: my go "你的第一个需求"
    - Step 5: 在 IDE 中完成任务
    - Step 6: 查看结果
 2. 每步配图（用代码块展示终端输出）
@@ -2259,7 +2259,7 @@ OutboxPoller.check_once 增加文件大小限制。
 为 config.py 和 prompt.py 中的 lru_cache 增加统计。
 
 实现要求:
-1. 新增 ma cache-stats 命令显示缓存命中率
+1. 新增 my cache-stats 命令显示缓存命中率
 2. root_dir, _env 的 cache_info() 信息
 
 严格评审标准:
@@ -2278,7 +2278,7 @@ OutboxPoller.check_once 增加文件大小限制。
 实现要求:
 1. 新增函数 get_workspace_stats() -> dict
    返回: total_size_mb, file_count, largest_file, oldest_file
-2. cli.py 的 ma status 命令显示 workspace 大小
+2. cli.py 的 my status 命令显示 workspace 大小
 3. 超过 100MB 时 warning
 
 严格评审标准:
@@ -2316,7 +2316,7 @@ OutboxPoller.check_once 增加文件大小限制。
 实现要求:
 1. 统计每个 node 的执行次数、平均时间、错误率
 2. 保存到 .multi-agent/stats.json
-3. ma status 显示累计统计
+3. my status 显示累计统计
 
 严格评审标准:
 - 新增测试
@@ -2355,7 +2355,7 @@ OutboxPoller.check_once 增加文件大小限制。
 1. 新增函数 cleanup_old_files(max_age_days: int = 7)
 2. 清理 tasks/, history/, logs/ 中超过 max_age_days 的文件
 3. 不清理活跃任务的文件
-4. cli.py 新增 ma cleanup 命令
+4. cli.py 新增 my cleanup 命令
 
 严格评审标准:
 - 不误删活跃文件
@@ -2366,18 +2366,18 @@ OutboxPoller.check_once 增加文件大小限制。
 1. python -m pytest tests/ -v
 ```
 
-### 93. schema.py — 增加 JSON schema 导出
+### 93. schema.py — 增加 JSON schemy 导出
 
 ```
-为所有 Pydantic 模型增加 JSON Schema 导出功能。
+为所有 Pydantic 模型增加 JSON Schemy 导出功能。
 
 实现要求:
-1. 新增 cli 命令 ma schema [MODEL] 导出 JSON Schema
+1. 新增 cli 命令 my schemy [MODEL] 导出 JSON Schema
 2. 支持: Task, BuilderOutput, ReviewerOutput, SubTask, DecomposeResult
-3. 输出标准 JSON Schema 格式
+3. 输出标准 JSON Schemy 格式
 
 严格评审标准:
-- JSON Schema 有效
+- JSON Schemy 有效
 - 新增测试
 - 全量 pytest tests/ -v 通过
 
@@ -2430,10 +2430,10 @@ OutboxPoller.check_once 增加文件大小限制。
 
 ## 八、新功能 (96-100)
 
-### 96. 增加 ma list-skills 命令
+### 96. 增加 my list-skills 命令
 
 ```
-新增 ma list-skills 命令列出所有可用 skill。
+新增 my list-skills 命令列出所有可用 skill。
 
 实现要求:
 1. 扫描 skills/ 目录
@@ -2445,14 +2445,14 @@ OutboxPoller.check_once 增加文件大小限制。
 - 全量 pytest tests/ -v 通过
 
 验证步骤:
-1. ma list-skills
+1. my list-skills
 2. python -m pytest tests/ -v
 ```
 
-### 97. 增加 ma agents 命令列出所有 agent
+### 97. 增加 my agents 命令列出所有 agent
 
 ```
-新增 ma agents 命令列出所有配置的 agent。
+新增 my agents 命令列出所有配置的 agent。
 
 实现要求:
 1. 读取 agents.yaml
@@ -2464,17 +2464,17 @@ OutboxPoller.check_once 增加文件大小限制。
 - 全量 pytest tests/ -v 通过
 
 验证步骤:
-1. ma agents
+1. my agents
 2. python -m pytest tests/ -v
 ```
 
-### 98. 增加 ma export 命令导出任务结果
+### 98. 增加 my export 命令导出任务结果
 
 ```
-新增 ma export 命令导出任务执行结果。
+新增 my export 命令导出任务执行结果。
 
 实现要求:
-1. 格式: ma export TASK_ID [--format json|markdown|html]
+1. 格式: my export TASK_ID [--format json|markdown|html]
 2. 导出: 任务配置、conversation、最终结果
 3. markdown 格式可直接粘贴到 PR 或文档
 
@@ -2486,13 +2486,13 @@ OutboxPoller.check_once 增加文件大小限制。
 1. python -m pytest tests/ -v
 ```
 
-### 99. 增加 ma replay 命令重放任务
+### 99. 增加 my replay 命令重放任务
 
 ```
-新增 ma replay 命令从历史中重放任务。
+新增 my replay 命令从历史中重放任务。
 
 实现要求:
-1. 格式: ma replay TASK_ID
+1. 格式: my replay TASK_ID
 2. 从 history/{task_id}.json 读取 conversation
 3. 显示完整的事件时间线
 4. 支持 --from-step N 从指定步骤开始
@@ -2505,13 +2505,13 @@ OutboxPoller.check_once 增加文件大小限制。
 1. python -m pytest tests/ -v
 ```
 
-### 100. 增加 ma version 命令和版本一致性检查
+### 100. 增加 my version 命令和版本一致性检查
 
 ```
-新增 ma version 命令并增加版本一致性检查。
+新增 my version 命令并增加版本一致性检查。
 
 实现要求:
-1. ma version 显示: 版本号、Python 版本、安装路径
+1. my version 显示: 版本号、Python 版本、安装路径
 2. 新增测试: __init__.py 和 pyproject.toml 的版本号一致
 3. 新增测试: README badge 中的测试数量与 pytest 实际一致
 
@@ -2521,7 +2521,7 @@ OutboxPoller.check_once 增加文件大小限制。
 - 全量 pytest tests/ -v 通过
 
 验证步骤:
-1. ma version
+1. my version
 2. python -m pytest tests/ -v
 ```
 
@@ -2532,12 +2532,12 @@ OutboxPoller.check_once 增加文件大小限制。
 批量运行（每条独立执行）:
 ```bash
 # 示例: 逐条执行
-ma go "第1条提示词内容" --builder windsurf --reviewer cursor
-ma go "第2条提示词内容" --builder windsurf --reviewer cursor
+my go "第1条提示词内容" --builder windsurf --reviewer cursor
+my go "第2条提示词内容" --builder windsurf --reviewer cursor
 # ...
 
 # 或者用 decompose 模式处理更复杂的任务:
-ma go "第1条提示词内容" --decompose --builder windsurf --reviewer cursor
+my go "第1条提示词内容" --decompose --builder windsurf --reviewer cursor
 ```
 
 > 每条任务完成后自动进入下一条

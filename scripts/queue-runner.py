@@ -42,7 +42,7 @@ def run_task(num: int, title: str, prompt: str, builder: str, reviewer: str) -> 
     print(f"{'='*60}\n")
 
     cmd = [
-        "ma", "go", prompt,
+        "my", "go", prompt,
         "--task-id", task_id,
         "--builder", builder,
         "--reviewer", reviewer,
@@ -52,11 +52,11 @@ def run_task(num: int, title: str, prompt: str, builder: str, reviewer: str) -> 
         return result.returncode == 0
     except subprocess.TimeoutExpired:
         print(f"  ⏰ TIMEOUT after 1 hour, skipping #{num}")
-        subprocess.run(["ma", "cancel"], capture_output=True)
+        subprocess.run(["my", "cancel"], capture_output=True)
         return False
     except KeyboardInterrupt:
         print(f"\n  🛑 User interrupted at task #{num}")
-        subprocess.run(["ma", "cancel"], capture_output=True)
+        subprocess.run(["my", "cancel"], capture_output=True)
         sys.exit(1)
 
 

@@ -135,7 +135,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
         click.echo("  ✅ .multi-agent/")
 
         click.echo("\n🎉 初始化完成！下一步:")
-        click.echo('  ma go "实现用户登录功能"')
+        click.echo('  my go "实现用户登录功能"')
 
     # ── render ──────────────────────────────────────────
 

@@ -81,7 +81,7 @@ def command_init_session(args: argparse.Namespace) -> int:
         reset=False,
     )
     payload["status"] = "session_initialized"
-    payload["deprecated_note"] = "workmode_ctl is compatibility-only; use `ma session start`."
+    payload["deprecated_note"] = "workmode_ctl is compatibility-only; use `my session start`."
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
@@ -103,7 +103,7 @@ def command_next_action(args: argparse.Namespace) -> int:
         "actionable": actionable,
         "reason": "compat mode from session status",
         "next_owner_agent": owner,
-        "deprecated_note": "Use `ma session status/pull` instead.",
+        "deprecated_note": "Use `my session status/pull` instead.",
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
@@ -112,7 +112,7 @@ def command_next_action(args: argparse.Namespace) -> int:
 def command_auto_progress(args: argparse.Namespace) -> int:
     print(
         "ERROR: auto-progress is deprecated in LangGraph-SSOT mode. "
-        "Use `ma session push --task-id ... --agent ... --file ...`.",
+        "Use `my session push --task-id ... --agent ... --file ...`.",
         file=sys.stderr,
     )
     return 1
@@ -126,20 +126,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--config", default=DEFAULT_CONFIG, help="Path to workmode config YAML")
     p.set_defaults(func=command_validate_config)
 
-    p = sub.add_parser("init-session", help="Deprecated wrapper to ma session start")
+    p = sub.add_parser("init-session", help="Deprecated wrapper to my session start")
     p.add_argument("--task", required=True, help="Path to task JSON")
     p.add_argument("--config", default=DEFAULT_CONFIG, help="Path to workmode config YAML")
     p.add_argument("--mode", default="strict", help="Mode profile from config")
     p.add_argument("--session-dir", default="runtime/sessions", help="Deprecated compatibility argument")
     p.set_defaults(func=command_init_session)
 
-    p = sub.add_parser("next-action", help="Deprecated wrapper to ma session status/pull")
+    p = sub.add_parser("next-action", help="Deprecated wrapper to my session status/pull")
     p.add_argument("--task", required=True, help="Path to task JSON")
     p.add_argument("--agent", required=True, help="Agent ID")
     p.add_argument("--session-dir", default="runtime/sessions", help="Deprecated compatibility argument")
     p.set_defaults(func=command_next_action)
 
-    p = sub.add_parser("auto-progress", help="Deprecated; use ma session push")
+    p = sub.add_parser("auto-progress", help="Deprecated; use my session push")
     p.add_argument("--task", required=True, help="Path to task JSON")
     p.add_argument("--event", required=True, help="Deprecated compatibility argument")
     p.add_argument("--actor", required=True, help="Deprecated compatibility argument")

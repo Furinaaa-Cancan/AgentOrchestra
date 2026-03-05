@@ -2,7 +2,7 @@
 
 ## What is a Skill?
 
-A skill defines a repeatable task type that AgentOrchestra can execute. Each skill has a `contract.yaml` that specifies inputs, outputs, quality gates, and retry policies.
+A skill defines a repeatable task type that MyGO can execute. Each skill has a `contract.yaml` that specifies inputs, outputs, quality gates, and retry policies.
 
 ## Creating a New Skill
 
