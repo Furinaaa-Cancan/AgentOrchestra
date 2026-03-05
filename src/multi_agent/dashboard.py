@@ -66,8 +66,8 @@ def generate_dashboard(
     # Actions
     lines.append("## 操作\n")
     lines.append("- 查看任务: `cat .multi-agent/TASK.md`")
-    lines.append("- 查看状态: `ma status`")
-    lines.append("- 取消任务: `ma cancel`")
+    lines.append("- 查看状态: `my status`")
+    lines.append("- 取消任务: `my cancel`")
     lines.append("")
 
     return "\n".join(lines)

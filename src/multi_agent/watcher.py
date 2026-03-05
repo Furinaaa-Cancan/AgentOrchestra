@@ -16,7 +16,7 @@ class OutboxPoller:
     """Simple polling-based watcher for outbox/ directory.
 
     Uses polling instead of OS-level watchers for maximum FS compatibility.
-    Falls back gracefully — user can always use ``ma done`` manually.
+    Falls back gracefully — user can always use ``my done`` manually.
     """
 
     def __init__(self, poll_interval: float = 2.0, *,

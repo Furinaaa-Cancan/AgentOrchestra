@@ -113,7 +113,7 @@ def register_queue_commands(main: click.Group) -> None:  # noqa: C901
         from multi_agent.config import workspace_dir
         report_path = workspace_dir() / "queue-results.json"
         if not report_path.exists():
-            click.echo("暂无队列执行记录。运行 `ma queue run` 开始。")
+            click.echo("暂无队列执行记录。运行 `my queue run` 开始。")
             return
         results = json.loads(report_path.read_text(encoding="utf-8"))
         click.echo(f"✅ 通过: {len(results.get('passed', []))}")

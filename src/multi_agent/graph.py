@@ -421,7 +421,7 @@ def build_node(state: WorkflowState) -> dict[str, Any]:
     builder_id = state.get("builder_id", "?")
     reviewer_id = state.get("reviewer_id", "?")
 
-    # Interrupt: wait for builder to submit via `ma done`
+    # Interrupt: wait for builder to submit via `my done`
     # Role-based: inbox is always builder.md regardless of which IDE
     result = interrupt({
         "role": "builder",
@@ -867,7 +867,7 @@ def _is_cancelled(task_id: str) -> bool:
     """Check if a task has been cancelled by reading its YAML status.
 
     NOTE: This performs a non-locked file read. A concurrent write (e.g. from
-    ``ma cancel``) could yield a partial/corrupt read. The broad ``except``
+    ``my cancel``) could yield a partial/corrupt read. The broad ``except``
     below treats any parse failure as "not cancelled", which is the safe
     default — the next poll cycle will re-check.
     """

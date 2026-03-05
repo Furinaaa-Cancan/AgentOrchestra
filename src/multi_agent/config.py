@@ -42,7 +42,7 @@ def _find_root() -> Path:
         f"Could not find MyGO project root (no 'skills/' + 'agents/' found). "
         f"Scanned: {scanned_display}. "
         f"Falling back to CWD: {cur}. "
-        f"Run 'mygo init' to initialize a project or set MA_ROOT env var.",
+        f"Run 'my init' to initialize a project or set MA_ROOT env var.",
         stacklevel=2,
     )
     return cur
