@@ -113,8 +113,8 @@ with the file watcher.
 
 | Metric | Value |
 |--------|-------|
-| Tests | **1023** |
-| Coverage | **97%** |
+| Tests | **1040** |
+| Coverage | **97%** (13 modules at 100%) |
 | Ruff errors | **0** |
 | Mypy strict errors | **0** |
 
