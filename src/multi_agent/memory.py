@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from multi_agent._utils import now_utc as _now_utc
+from multi_agent._utils import validate_task_id as _validate_task_id
 from multi_agent.config import history_dir, workspace_dir
 
 
@@ -15,6 +16,7 @@ def memory_file() -> Path:
 
 
 def pending_file(task_id: str) -> Path:
+    _validate_task_id(task_id)
     return history_dir() / f"{task_id}.memory.pending.json"
 
 

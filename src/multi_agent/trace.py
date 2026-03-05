@@ -9,6 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from multi_agent._utils import now_utc as _now_utc
+from multi_agent._utils import validate_task_id as _validate_task_id
 from multi_agent.config import history_dir
 
 try:
@@ -19,6 +20,7 @@ fcntl = _fcntl
 
 
 def trace_file(task_id: str) -> Path:
+    _validate_task_id(task_id)
     return history_dir() / f"{task_id}.events.jsonl"
 
 
