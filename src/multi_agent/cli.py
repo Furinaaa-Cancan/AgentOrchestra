@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import hashlib
 import json
@@ -55,7 +56,7 @@ def handle_errors(f: _F) -> _F:
             raise
         except KeyboardInterrupt:
             click.echo("\n⏹️  操作已取消")
-            raise SystemExit(0)
+            raise SystemExit(0) from None
         except click.exceptions.Exit:
             raise
         except Exception as e:
@@ -70,7 +71,7 @@ def handle_errors(f: _F) -> _F:
             # Log error to file
             _log_error_to_file(f.__name__, e)
 
-            raise SystemExit(1)
+            raise SystemExit(1) from None
     return wrapper  # type: ignore[return-value]  # functools.wraps preserves signature
 
 
@@ -160,11 +161,7 @@ def _is_task_terminal_or_missing(app: Any, task_id: str) -> bool:
     if _is_terminal_final_status(final):
         return True
 
-    if not snapshot.next:
-        # Graph already finished (legacy runs may not set final_status explicitly).
-        return True
-
-    return False
+    return not snapshot.next
 
 
 def _mark_task_inactive(task_id: str, *, status: str, reason: str) -> bool:
@@ -326,10 +323,8 @@ def _ensure_no_active_task(app: Any) -> None:
             clear_runtime()
             click.echo(f"🧹 检测到陈旧 active 标记 '{active_task}'，已自动清理。")
         else:
-            try:
+            with contextlib.suppress(RuntimeError):
                 acquire_lock(active_task)
-            except RuntimeError:
-                pass
             click.echo(f"❌ 检测到活跃任务标记 '{active_task}'，请先恢复或取消该任务。", err=True)
             click.echo(f"   • ma watch --task-id {active_task}   — 恢复自动推进", err=True)
             click.echo(f"   • ma cancel --task-id {active_task}  — 取消并清理", err=True)
@@ -514,7 +509,7 @@ def _read_done_output(role: str, file_path: str | None) -> dict[str, Any]:
             click.echo(f"❌ File too large ({fsize // 1024 // 1024} MB > 10 MB limit): {file_path}", err=True)
             sys.exit(1)
         try:
-            with open(file_path, encoding="utf-8") as f:
+            with Path(file_path).open(encoding="utf-8") as f:
                 output_data = json.load(f)
         except json.JSONDecodeError as e:
             click.echo(f"❌ Invalid JSON in {file_path}: {e}", err=True)

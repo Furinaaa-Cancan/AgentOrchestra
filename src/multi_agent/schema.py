@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import time
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -14,7 +14,7 @@ from multi_agent._utils import now_utc as _now_utc
 
 # ── Enums ─────────────────────────────────────────────────
 
-class TaskState(str, Enum):
+class TaskState(StrEnum):
     DRAFT = "DRAFT"
     QUEUED = "QUEUED"
     ASSIGNED = "ASSIGNED"
@@ -29,14 +29,14 @@ class TaskState(str, Enum):
     CANCELLED = "CANCELLED"
 
 
-class Priority(str, Enum):
+class Priority(StrEnum):
     LOW = "low"
     NORMAL = "normal"
     HIGH = "high"
     URGENT = "urgent"
 
 
-class CheckKind(str, Enum):
+class CheckKind(StrEnum):
     LINT = "lint"
     UNIT_TEST = "unit_test"
     INTEGRATION_TEST = "integration_test"
@@ -45,7 +45,7 @@ class CheckKind(str, Enum):
     ARTIFACT_CHECKSUM = "artifact_checksum"
 
 
-class ErrorCode(str, Enum):
+class ErrorCode(StrEnum):
     """Unified error codes for graph workflow failures.
 
     Aligned with SHIELDA (2025) exception taxonomy categories:
@@ -64,14 +64,14 @@ class ErrorCode(str, Enum):
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 
-class BackoffStrategy(str, Enum):
+class BackoffStrategy(StrEnum):
     NONE = "none"
     LINEAR = "linear"
     EXPONENTIAL = "exponential"
     FIXED = "fixed"
 
 
-class ReviewDecision(str, Enum):
+class ReviewDecision(StrEnum):
     APPROVE = "approve"
     REJECT = "reject"
     REQUEST_CHANGES = "request_changes"
@@ -269,7 +269,7 @@ class AgentProfile(BaseModel):
 # validation time (architecture review defect B3).
 
 
-class ConversationAction(str, Enum):
+class ConversationAction(StrEnum):
     """All valid orchestrator/agent actions in the conversation log."""
     ASSIGNED = "assigned"
     APPROVED = "approved"

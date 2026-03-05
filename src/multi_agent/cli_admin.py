@@ -151,6 +151,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
         """预览 prompt（不执行任何操作）."""
         _validate_skill_id(skill)
         import json
+        from pathlib import Path
 
         from multi_agent.contract import load_contract
         from multi_agent.prompt import render_builder_prompt, render_reviewer_prompt
@@ -160,7 +161,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
             contract = load_contract(skill)
         except FileNotFoundError:
             click.echo(f"❌ Skill '{skill}' not found", err=True)
-            raise SystemExit(1)
+            raise SystemExit(1) from None
 
         task = Task(
             task_id="render-preview",
@@ -176,7 +177,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
             if not builder_output_file:
                 click.echo("❌ --builder-output is required for reviewer role", err=True)
                 raise SystemExit(1)
-            with open(builder_output_file, encoding="utf-8") as f:
+            with Path(builder_output_file).open(encoding="utf-8") as f:
                 builder_output = json.load(f)
             result = render_reviewer_prompt(
                 task, contract, agent_id="preview",

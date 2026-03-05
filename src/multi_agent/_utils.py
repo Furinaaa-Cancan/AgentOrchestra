@@ -47,9 +47,7 @@ def count_nonempty_entries(value: Any) -> int:
         return 0
     count = 0
     for item in value:
-        if isinstance(item, str) and item.strip():
-            count += 1
-        elif isinstance(item, dict) and item:
+        if (isinstance(item, str) and item.strip()) or (isinstance(item, dict) and item):
             count += 1
     return count
 

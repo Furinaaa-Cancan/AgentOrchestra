@@ -310,7 +310,7 @@ def _write_error(outbox_file: str, error_msg: str) -> None:
 
 class DispatchResult:
     """Outcome of dispatch_agent() — replaces scattered if/else in callers."""
-    __slots__ = ("mode", "thread", "message")
+    __slots__ = ("message", "mode", "thread")
 
     def __init__(self, mode: str, thread: threading.Thread | None, message: str):
         self.mode = mode        # "auto" | "manual" | "degraded"

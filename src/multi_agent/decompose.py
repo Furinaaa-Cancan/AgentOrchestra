@@ -220,7 +220,7 @@ def write_decompose_prompt(requirement: str, *, lang: str = "zh", project_contex
             f"> 绝对路径: `{outbox_abs}`",
         ]
 
-    lines = [prompt, "", "---", ""] + footer_lines + [""]
+    lines = [prompt, "", "---", "", *footer_lines, ""]
 
     p = workspace_dir() / "TASK.md"
     p.parent.mkdir(parents=True, exist_ok=True)

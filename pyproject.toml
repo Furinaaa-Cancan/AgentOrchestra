@@ -41,8 +41,8 @@ target-version = "py311"
 line-length = 120
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I"]
-ignore = ["E501"]
+select = ["E", "F", "W", "I", "UP", "SIM", "PTH", "B", "C4", "C90", "RUF"]
+ignore = ["E501", "RUF001", "RUF002"]
 
 [tool.mypy]
 python_version = "3.11"

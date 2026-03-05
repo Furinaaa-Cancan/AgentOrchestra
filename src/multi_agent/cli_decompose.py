@@ -8,6 +8,7 @@ the circular-import chain.
 
 from __future__ import annotations
 
+import contextlib
 import sys
 import time
 from pathlib import Path
@@ -104,10 +105,8 @@ def _obtain_decompose_result(
     # Cache the result for future re-use
     if result and not decompose_file and not no_cache:
         from multi_agent.decompose import cache_decompose
-        try:
+        with contextlib.suppress(Exception):
             cache_decompose(requirement, result, skill_id=skill)
-        except Exception:
-            pass
     return result
 
 
@@ -357,10 +356,8 @@ def _retry_sub_task(
         workflow_mode=workflow_mode, review_policy=review_policy,
     )
     sub_config = make_config_fn(sub_state["task_id"])
-    try:
+    with contextlib.suppress(start_error_cls):
         start_fn(app, sub_state["task_id"], sub_state)
-    except start_error_cls:
-        pass  # Will be detected in watch loop
     show_waiting_fn(app, sub_config)
     watch_loop_fn(app, sub_config, sub_state["task_id"], manage_lock=False)
     return _collect_sub_result(app, sub_config, st, sub_start)
@@ -483,11 +480,10 @@ def _run_decomposed(
 
     _display_sub_tasks(decompose_result, sorted_tasks)
 
-    if not auto_confirm:
-        if not click.confirm("确认执行这些子任务？", default=True):
-            click.echo("⏹️  已取消。可修改 .multi-agent/outbox/decompose.json 后重新运行。")
-            release_lock()
-            return
+    if not auto_confirm and not click.confirm("确认执行这些子任务？", default=True):
+        click.echo("⏹️  已取消。可修改 .multi-agent/outbox/decompose.json 后重新运行。")
+        release_lock()
+        return
 
     # Phase 3: Load checkpoint for crash recovery
     from multi_agent.meta_graph import clear_checkpoint, save_checkpoint

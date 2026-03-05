@@ -657,7 +657,7 @@ def _validate_builder_output(result: Any) -> dict[str, Any] | None:
     return None
 
 
-def _enrich_builder_result(result: dict[str, Any], state: "WorkflowState") -> None:
+def _enrich_builder_result(result: dict[str, Any], state: WorkflowState) -> None:
     """Add semantic warnings and quality gate checks to builder result (in-place)."""
     # C3: Semantic validation — completed with no changed_files is suspicious
     builder_status = str(result.get("status", "")).lower()
@@ -878,7 +878,7 @@ def review_node(state: WorkflowState) -> dict[str, Any]:
 
 
 def _enrich_reviewer_result(
-    result: dict[str, Any], decision: str, state: "WorkflowState",
+    result: dict[str, Any], decision: str, state: WorkflowState,
 ) -> None:
     """Inject fallback feedback for empty reject/request_changes + rubber-stamp detection (in-place)."""
     # Empty feedback on reject/request_changes is actionless — force a fallback message
@@ -912,7 +912,7 @@ def _enrich_reviewer_result(
         result["_rubber_stamp_warning"] = True
 
 
-def _decide_approve(state: "WorkflowState", rubber_stamp: bool) -> dict[str, Any]:
+def _decide_approve(state: WorkflowState, rubber_stamp: bool) -> dict[str, Any]:
     """Handle approve decision in decide_node."""
     convo_entries: list[dict[str, Any]] = []
     if rubber_stamp:
@@ -943,7 +943,7 @@ def _decide_approve(state: "WorkflowState", rubber_stamp: bool) -> dict[str, Any
 
 
 def _decide_request_changes(
-    state: "WorkflowState", reviewer_output: dict[str, Any],
+    state: WorkflowState, reviewer_output: dict[str, Any],
 ) -> dict[str, Any]:
     """Handle request_changes decision in decide_node."""
     feedback = reviewer_output.get("feedback", "")
@@ -978,7 +978,7 @@ def _decide_request_changes(
 
 
 def _decide_reject_retry(
-    state: "WorkflowState", reviewer_output: dict[str, Any],
+    state: WorkflowState, reviewer_output: dict[str, Any],
 ) -> dict[str, Any]:
     """Handle reject decision with retry budget in decide_node."""
     retry_count = state.get("retry_count", 0) + 1
