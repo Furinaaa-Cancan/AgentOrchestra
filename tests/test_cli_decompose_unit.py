@@ -501,6 +501,125 @@ class TestHandleFailedSubTaskInteractive:
 # ── _display_sub_tasks extended ──────────────────────────
 
 
+# ── _run_decomposed integration (lines 448-517) ─────────
+
+
+class TestRunDecomposed:
+    """Cover _run_decomposed function paths."""
+
+    def _call(self, **overrides: Any) -> None:
+        from multi_agent.cli_decompose import _run_decomposed
+        defaults: dict[str, Any] = {
+            "app": MagicMock(),
+            "parent_task_id": "parent-1",
+            "requirement": "build API",
+            "skill": "code-implement",
+            "builder": "ws",
+            "reviewer": "ag",
+            "retry_budget": 2,
+            "timeout": 60,
+            "no_watch": True,
+            "workflow_mode": "normal",
+            "review_policy": {},
+            "auto_confirm": True,
+        }
+        defaults.update(overrides)
+        _run_decomposed(**defaults)
+
+    @patch("multi_agent.cli_decompose._obtain_decompose_result", return_value=None)
+    @patch("multi_agent.workspace.save_task_yaml")
+    def test_decompose_returns_none_early_exit(self, mock_save, mock_obtain, capsys):
+        """decompose_result is None → early return (lines 470-471)."""
+        self._call()
+        out = capsys.readouterr().out
+        assert "Decomposition" in out
+
+    @patch("multi_agent.cli_decompose._obtain_decompose_result")
+    @patch("multi_agent.cli_decompose._validate_and_sort", return_value=None)
+    @patch("multi_agent.workspace.save_task_yaml")
+    @patch("multi_agent.cli._run_single_task")
+    def test_empty_sorted_falls_back_to_single(self, mock_single, mock_save, mock_validate, mock_obtain, capsys):
+        """sorted_tasks is None → fallback to single task (lines 475-479)."""
+        mock_obtain.return_value = _decompose_result([_sub("a")])
+        self._call()
+        mock_single.assert_called_once()
+        out = capsys.readouterr().out
+        assert "降级" in out
+
+    @patch("multi_agent.cli_decompose._obtain_decompose_result")
+    @patch("multi_agent.cli_decompose._validate_and_sort")
+    @patch("multi_agent.cli_decompose._display_sub_tasks")
+    @patch("multi_agent.workspace.save_task_yaml")
+    @patch("multi_agent.workspace.release_lock")
+    @patch("click.confirm", return_value=False)
+    def test_user_cancels(self, mock_confirm, mock_rel, mock_save, mock_display, mock_validate, mock_obtain, capsys):
+        """User says no at confirm → release lock (lines 483-486)."""
+        mock_obtain.return_value = _decompose_result([_sub("a")])
+        mock_validate.return_value = [_sub("a")]
+        self._call(auto_confirm=False)
+        mock_rel.assert_called_once()
+        out = capsys.readouterr().out
+        assert "取消" in out
+
+    @patch("multi_agent.cli_decompose._obtain_decompose_result")
+    @patch("multi_agent.cli_decompose._validate_and_sort")
+    @patch("multi_agent.cli_decompose._display_sub_tasks")
+    @patch("multi_agent.cli_decompose._load_decompose_checkpoint", return_value=([], set(), set()))
+    @patch("multi_agent.cli_decompose._finalize_decompose")
+    @patch("multi_agent.workspace.save_task_yaml")
+    @patch("multi_agent.meta_graph.save_checkpoint")
+    def test_happy_path_executes_and_finalizes(
+        self, mock_ckpt, mock_save, mock_finalize, mock_load_ckpt,
+        mock_display, mock_validate, mock_obtain, capsys,
+    ):
+        """Full happy path: decompose → validate → execute → finalize (lines 488-521)."""
+        tasks = [_sub("a")]
+        mock_obtain.return_value = _decompose_result(tasks)
+        mock_validate.return_value = tasks
+        # run_one should return None (continue) for each task
+        with patch.object(_DecomposeExecContext, "run_one", return_value=None):
+            self._call()
+        mock_finalize.assert_called_once()
+
+    @patch("multi_agent.cli_decompose._obtain_decompose_result")
+    @patch("multi_agent.cli_decompose._validate_and_sort")
+    @patch("multi_agent.cli_decompose._display_sub_tasks")
+    @patch("multi_agent.cli_decompose._load_decompose_checkpoint", return_value=([], set(), set()))
+    @patch("multi_agent.cli_decompose._finalize_decompose")
+    @patch("multi_agent.workspace.save_task_yaml")
+    @patch("multi_agent.meta_graph.save_checkpoint")
+    def test_run_one_return_exits(
+        self, mock_ckpt, mock_save, mock_finalize, mock_load_ckpt,
+        mock_display, mock_validate, mock_obtain,
+    ):
+        """run_one returns 'return' → early exit (lines 511-512)."""
+        tasks = [_sub("a"), _sub("b")]
+        mock_obtain.return_value = _decompose_result(tasks)
+        mock_validate.return_value = tasks
+        with patch.object(_DecomposeExecContext, "run_one", return_value="return"):
+            self._call()
+        mock_finalize.assert_not_called()
+
+    @patch("multi_agent.cli_decompose._obtain_decompose_result")
+    @patch("multi_agent.cli_decompose._validate_and_sort")
+    @patch("multi_agent.cli_decompose._display_sub_tasks")
+    @patch("multi_agent.cli_decompose._load_decompose_checkpoint", return_value=([], set(), set()))
+    @patch("multi_agent.cli_decompose._finalize_decompose")
+    @patch("multi_agent.workspace.save_task_yaml")
+    @patch("multi_agent.meta_graph.save_checkpoint")
+    def test_run_one_break_skips_remaining(
+        self, mock_ckpt, mock_save, mock_finalize, mock_load_ckpt,
+        mock_display, mock_validate, mock_obtain,
+    ):
+        """run_one returns 'break' → skip remaining but still finalize (lines 513-514)."""
+        tasks = [_sub("a"), _sub("b")]
+        mock_obtain.return_value = _decompose_result(tasks)
+        mock_validate.return_value = tasks
+        with patch.object(_DecomposeExecContext, "run_one", return_value="break"):
+            self._call()
+        mock_finalize.assert_called_once()
+
+
 class TestDisplaySubTasksExtended:
     """Cover lines 402, 405-408: parallel group display + topo_sort error fallback."""
 

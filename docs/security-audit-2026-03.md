@@ -113,7 +113,15 @@ with the file watcher.
 
 | Metric | Value |
 |--------|-------|
-| Tests | **941** |
-| Coverage | **90%+** |
+| Tests | **1023** |
+| Coverage | **97%** |
 | Ruff errors | **0** |
 | Mypy strict errors | **0** |
+
+### Performance Optimizations
+
+- **SQLite WAL mode**: `PRAGMA journal_mode=WAL` enables concurrent readers during writes
+- **Reduced fsync**: `PRAGMA synchronous=NORMAL` balances durability vs speed
+- **Page cache**: `PRAGMA cache_size=-8000` (8 MB) for faster repeated queries
+- **Graph compile cache**: Double-checked locking with fast-path (no lock on cache hit)
+- **Connection pool**: Singleton per db_path with health verification (`SELECT 1`)
