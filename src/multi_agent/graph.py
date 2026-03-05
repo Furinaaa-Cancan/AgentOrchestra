@@ -1231,6 +1231,11 @@ def _get_connection(path: str) -> sqlite3.Connection:
             except sqlite3.ProgrammingError:
                 del _conn_pool[path]
         conn = sqlite3.connect(path, check_same_thread=False)
+        # Performance pragmas — WAL mode enables concurrent readers,
+        # synchronous=NORMAL balances durability vs speed for checkpoint data.
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-8000")  # 8 MB page cache
         _conn_pool[path] = conn
         atexit.register(conn.close)
         return conn
