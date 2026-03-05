@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "multi-agent"
 version = "0.6.0"
-description = "MY — Multi-agent Yielding Orchestra. A band of AI agents orchestrated to build, review, and ship code together."
+description = "MyGO — Multi-agent Yielding Group Orchestra. A band of AI agents orchestrated to build, review, and ship code together."
 requires-python = ">=3.11"
 dependencies = [
     "langgraph>=0.4,<1",
@@ -28,7 +28,7 @@ mcp = [
 ]
 
 [project.scripts]
-my = "multi_agent.cli:main"
+mygo = "multi_agent.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/multi_agent"]
