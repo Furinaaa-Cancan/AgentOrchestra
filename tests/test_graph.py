@@ -764,7 +764,8 @@ class TestEventHooks:
         from multi_agent.graph import EventHooks, register_hook
         hooks = EventHooks()
         calls = []
-        with patch("multi_agent.graph.graph_hooks", hooks):
+        with patch("multi_agent.graph_infra.graph_hooks", hooks), \
+             patch("multi_agent.graph.graph_hooks", hooks):
             register_hook("plan_start", lambda s: calls.append("plan_enter"))
             register_hook("build_submit", lambda s, r: calls.append("build_exit"))
             register_hook("task_failed", lambda n, s, e: calls.append("error"))
