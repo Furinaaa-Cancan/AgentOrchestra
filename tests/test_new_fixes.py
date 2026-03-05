@@ -1003,3 +1003,64 @@ class TestSnapshotPathSanitization:
         snaps = list(snap_dir.glob("*.json"))
         assert len(snaps) == 1
         assert "task-abc-123" in snaps[0].name
+
+
+class TestSaveStateSnapshotEdgeCases:
+    """Cover uncovered branches in save_state_snapshot (lines 222-237)."""
+
+    def test_non_serializable_value_converted_to_str(self, tmp_path, monkeypatch):
+        from multi_agent import config
+        from multi_agent.graph_infra import save_state_snapshot
+        monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
+        state = {"task_id": "task-ser", "obj": object()}  # not JSON-serializable
+        save_state_snapshot("task-ser", "build", state)
+        snaps = list((tmp_path / "snapshots").glob("*.json"))
+        assert len(snaps) == 1
+
+    def test_write_error_suppressed(self, tmp_path, monkeypatch):
+        from multi_agent import config
+        from multi_agent.graph_infra import save_state_snapshot
+        monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
+        (tmp_path / "snapshots").mkdir(parents=True)
+        with patch("pathlib.Path.write_text", side_effect=PermissionError("denied")):
+            save_state_snapshot("task-write-err", "plan", {"x": 1})  # should not raise
+
+    def test_cleanup_oserror_suppressed(self, tmp_path, monkeypatch):
+        from multi_agent import config
+        from multi_agent.graph_infra import MAX_SNAPSHOTS, save_state_snapshot
+        monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
+        snap_dir = tmp_path / "snapshots"
+        snap_dir.mkdir(parents=True)
+        # Create MAX_SNAPSHOTS + 1 files to trigger cleanup
+        for i in range(MAX_SNAPSHOTS + 1):
+            (snap_dir / f"task-cleanup-plan-{i:010d}.json").write_text("{}")
+        with patch("pathlib.Path.unlink", side_effect=OSError("locked")):
+            save_state_snapshot("task-cleanup", "plan", {"x": 1})  # should not raise
+
+
+class TestLogTimingOSError:
+    """Cover log_timing OSError handling (lines 157-158)."""
+
+    def test_oserror_suppressed(self, tmp_path, monkeypatch):
+        from multi_agent import config
+        from multi_agent.graph_infra import log_timing
+        monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
+        (tmp_path / "logs").mkdir(parents=True)
+        with patch("pathlib.Path.open", side_effect=OSError("full")):
+            log_timing("task-t1", "build", 100.0, 101.0)  # should not raise
+
+
+class TestEventHooksErrorHandling:
+    """Cover fire_exit and fire_error exception suppression (lines 280-281, 287-288)."""
+
+    def test_fire_exit_callback_exception_suppressed(self):
+        from multi_agent.graph_infra import EventHooks
+        hooks = EventHooks()
+        hooks.on_node_exit("build", lambda s, r: 1 / 0)  # ZeroDivisionError
+        hooks.fire_exit("build", {}, {})  # should not raise
+
+    def test_fire_error_callback_exception_suppressed(self):
+        from multi_agent.graph_infra import EventHooks
+        hooks = EventHooks()
+        hooks.on_error(lambda n, s, e: 1 / 0)
+        hooks.fire_error("build", {}, RuntimeError("test"))  # should not raise

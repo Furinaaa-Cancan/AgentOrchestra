@@ -497,4 +497,97 @@ class TestDiffDecomposeResults:
         diffs = diff_decompose_results(r1, r2)
         assert any("依赖变更" in d for d in diffs)
 
+    def test_changed_done_criteria(self):
+        from multi_agent.decompose import diff_decompose_results
+        r1 = DecomposeResult(sub_tasks=[SubTask(id="a", description="A", done_criteria=["pass"])])
+        r2 = DecomposeResult(sub_tasks=[SubTask(id="a", description="A", done_criteria=["pass", "lint"])])
+        diffs = diff_decompose_results(r1, r2)
+        assert any("完成标准变更" in d for d in diffs)
 
+
+class TestReadDecomposeResultEdgeCases:
+    """Cover uncovered branches in read_decompose_result."""
+
+    def test_oserror_returns_none(self, tmp_path, monkeypatch):
+        from unittest.mock import patch
+        from multi_agent import config
+        monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
+        monkeypatch.setattr(config, "outbox_dir", lambda: tmp_path / "outbox")
+        outbox = tmp_path / "outbox"
+        outbox.mkdir(parents=True)
+        (outbox / "decompose.json").write_text('{"sub_tasks": []}')
+        with patch("pathlib.Path.read_text", side_effect=OSError("locked")):
+            result = read_decompose_result(validate=False)
+        assert result is None
+
+    def test_validation_critical_error_returns_none(self, tmp_path, monkeypatch):
+        from multi_agent import config
+        monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
+        monkeypatch.setattr(config, "outbox_dir", lambda: tmp_path / "outbox")
+        outbox = tmp_path / "outbox"
+        outbox.mkdir(parents=True)
+        # Empty sub_tasks — should be flagged as critical
+        (outbox / "decompose.json").write_text('{"sub_tasks": []}')
+        result = read_decompose_result(validate=True)
+        assert result is None
+
+    def test_markdown_fence_fallback(self, tmp_path, monkeypatch):
+        from multi_agent import config
+        monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
+        monkeypatch.setattr(config, "outbox_dir", lambda: tmp_path / "outbox")
+        outbox = tmp_path / "outbox"
+        outbox.mkdir(parents=True)
+        # Invalid JSON but valid markdown-fenced JSON
+        content = 'Here is the result:\n```json\n{"sub_tasks": [{"id": "a", "description": "do A"}]}\n```'
+        (outbox / "decompose.json").write_text(content)
+        result = read_decompose_result(validate=False)
+        assert result is not None
+        assert result.sub_tasks[0].id == "a"
+
+
+class TestGetCachedDecomposeEdgeCases:
+    """Cover get_cached_decompose exception handling (lines 330-332)."""
+
+    def test_corrupt_cache_returns_none(self, tmp_path, monkeypatch):
+        from multi_agent import config
+        monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
+        cd = tmp_path / "cache"
+        cd.mkdir(parents=True)
+        from multi_agent.decompose import _cache_key
+        key = _cache_key("test req", "")
+        (cd / f"decompose-{key}.json").write_text("not valid json{{{")
+        result = get_cached_decompose("test req")
+        assert result is None
+
+
+class TestTopoSortUnknownDep:
+    """Cover unknown dependency error in topo_sort_grouped (line 494)."""
+
+    def test_unknown_dep_raises(self):
+        tasks = [SubTask(id="a", description="A", deps=["nonexistent"])]
+        with pytest.raises(ValueError, match="Unknown dependency"):
+            topo_sort_grouped(tasks)
+
+
+class TestCollectProjectContextEdgeCases:
+    """Cover README read exception (lines 166-167)."""
+
+    def test_readme_read_error(self, tmp_path, monkeypatch):
+        from unittest.mock import patch
+        from multi_agent import config
+        monkeypatch.setattr(config, "root_dir", lambda: tmp_path)
+        # Create README but make it unreadable
+        readme = tmp_path / "README.md"
+        readme.write_text("# Test")
+        with patch.object(type(readme), "read_text", side_effect=PermissionError("denied")):
+            result = collect_project_context()
+        # Should not crash, just skip README
+        assert "denied" not in result
+
+    def test_pyproject_deps_extraction(self, tmp_path, monkeypatch):
+        from multi_agent import config
+        monkeypatch.setattr(config, "root_dir", lambda: tmp_path)
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text('[project]\ndependencies = [\n  "click>=8.0",\n  "pydantic>=2.0",\n]\n')
+        result = collect_project_context()
+        assert "click" in result or "dependencies" in result
