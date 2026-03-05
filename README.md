@@ -145,7 +145,7 @@ defaults:
 
 ### 任务分解
 
-复杂需求可自动分解为子任务，按依赖关系拓扑排序后顺序执行：
+复杂需求可自动分解为子任务，按依赖关系拓扑排序后执行：
 
 ```bash
 my go "实现完整认证模块" --decompose
@@ -154,6 +154,14 @@ my go "..." --decompose-file result.json           # 从文件加载分解结果
 ```
 
 每个子任务独立经历完整的 build → review → decide 循环，支持中断恢复（checkpoint）。
+
+**并行执行 (v0.7.0)**：无依赖的子任务自动并行——系统使用 `topo_sort_grouped()` 将子任务分组，同组任务通过 `ThreadPoolExecutor` 并发执行，每个 CLI agent 在隔离的 `.multi-agent/subtasks/<id>/` 工作区运行，互不干扰。
+
+```
+组 1 (可并行): sub-1, sub-2, sub-3   ← 3 个 Codex CLI 同时运行
+组 2:          sub-4                  ← 依赖组 1，顺序执行
+组 3 (可并行): sub-5, sub-6          ← 2 个并行
+```
 
 ---
 

@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.0] - 2025-06-17
+
+### Added
+- **Parallel sub-task execution** — independent sub-tasks in `--decompose` mode now run concurrently via `ThreadPoolExecutor`
+- `subtask_workspace()`, `subtask_task_file()`, `subtask_outbox_dir()` utilities in `config.py` for isolated parallel workspaces
+- `_prepare_group()` and `run_group_parallel()` methods on `_DecomposeExecContext`
+- `OutboxPoller` accepts custom `watch_dir` for subtask-specific polling
+
+### Changed
+- `_run_decomposed()` uses `topo_sort_grouped()` to execute groups: single-task groups run sequentially, multi-task groups run in parallel
+- `spawn_cli_agent()` and `dispatch_agent()` accept optional `subtask_id` parameter for workspace isolation
+- `_show_waiting()` and `_run_watch_loop()` pass `subtask_id` through to agent dispatch
+
 ## [0.6.1] - 2025-06-16
 
 ### Added
