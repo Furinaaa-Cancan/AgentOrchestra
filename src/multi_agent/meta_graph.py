@@ -171,6 +171,11 @@ def build_sub_task_state(
     if hasattr(sub_task, "acceptance_criteria") and sub_task.acceptance_criteria:
         done.extend(sub_task.acceptance_criteria)
 
+    # Resolve orchestrator so it persists in graph state (same fix as cli/session)
+    from multi_agent.router import get_defaults as _get_defaults
+    _defaults = _get_defaults()
+    _orchestrator = str(_defaults.get("orchestrator", "")).strip() or "codex"
+
     return {
         "task_id": task_id,
         "requirement": requirement,
@@ -184,6 +189,7 @@ def build_sub_task_state(
         "input_payload": {"requirement": sub_task.description},
         "builder_explicit": builder,
         "reviewer_explicit": reviewer,
+        "orchestrator_id": _orchestrator,
         "conversation": [],
         "parent_task_id": parent_task_id,
     }
