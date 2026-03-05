@@ -143,7 +143,7 @@ class _DecomposeExecContext:
                  workflow_mode: str, review_policy: Any,
                  no_watch: bool, auto_confirm: bool,
                  make_config: Any, build_state: Any, start_task: Any,
-                 start_error: type, show_waiting: Any, watch_loop: Any,
+                 start_error: type[BaseException], show_waiting: Any, watch_loop: Any,
                  save_yaml: Any, save_ckpt: Any, clear_rt: Any) -> None:
         self.app = app
         self.parent_task_id = parent_task_id
@@ -210,7 +210,8 @@ class _DecomposeExecContext:
         try:
             self.start_task(self.app, sub_task_id, sub_state)
         except self.start_error as e:
-            click.echo(f"❌ Sub-task {st.id} failed to start: {e.cause}", err=True)
+            cause = getattr(e, "cause", e)
+            click.echo(f"❌ Sub-task {st.id} failed to start: {cause}", err=True)
             prior_results.append({
                 "sub_id": st.id, "status": "failed",
                 "summary": str(e), "changed_files": [], "retry_count": 0,
@@ -345,7 +346,7 @@ def _retry_sub_task(
     prior_results: list[dict[str, Any]],
     workflow_mode: str, review_policy: Any, sub_start: float,
     make_config_fn: Any, build_state_fn: Any, start_fn: Any,
-    start_error_cls: type, show_waiting_fn: Any, watch_loop_fn: Any,
+    start_error_cls: type[BaseException], show_waiting_fn: Any, watch_loop_fn: Any,
 ) -> dict[str, Any]:
     """Retry a failed sub-task once and return the collected result."""
     sub_state = build_state_fn(
@@ -430,24 +431,29 @@ def _load_decompose_checkpoint(
 
 
 def _run_decomposed(
-    app,
-    parent_task_id,
-    requirement,
-    skill,
-    builder,
-    reviewer,
-    retry_budget,
-    timeout,
-    no_watch,
-    workflow_mode,
-    review_policy,
+    app: Any,
+    parent_task_id: str,
+    requirement: str,
+    skill: str,
+    builder: str,
+    reviewer: str,
+    retry_budget: int,
+    timeout: int,
+    no_watch: bool,
+    workflow_mode: str,
+    review_policy: Any,
     *,
     auto_confirm: bool = False,
     decompose_file: str | None = None,
     no_cache: bool = False,
-):
+) -> None:
     """Decompose → sequential sub-task build-review cycles → aggregate."""
-    from multi_agent.cli import _make_config, _run_single_task, _run_watch_loop, _show_waiting
+    from multi_agent.cli import (  # type: ignore[attr-defined]
+        _make_config,
+        _run_single_task,
+        _run_watch_loop,
+        _show_waiting,
+    )
     from multi_agent.meta_graph import aggregate_results, build_sub_task_state
     from multi_agent.orchestrator import TaskStartError, start_task
     from multi_agent.workspace import clear_runtime, release_lock, save_task_yaml

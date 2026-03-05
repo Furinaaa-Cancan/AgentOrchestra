@@ -11,8 +11,9 @@ import signal
 import sys
 import time
 import traceback
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import click
 
@@ -33,10 +34,12 @@ from multi_agent.workspace import (
     validate_outbox_data,
 )
 
+_F = TypeVar("_F", bound=Callable[..., Any])
+
 log = logging.getLogger(__name__)
 
 
-def handle_errors(f):
+def handle_errors(f: _F) -> _F:
     """Unified exception handler for CLI commands.
 
     - Shows user-friendly error messages by default.
@@ -45,7 +48,7 @@ def handle_errors(f):
     - Logs error to .multi-agent/logs/ directory.
     """
     @functools.wraps(f)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return f(*args, **kwargs)
         except SystemExit:
@@ -68,10 +71,10 @@ def handle_errors(f):
             _log_error_to_file(f.__name__, e)
 
             raise SystemExit(1)
-    return wrapper
+    return wrapper  # type: ignore[return-value]  # functools.wraps preserves signature
 
 
-def _log_error_to_file(command: str, error: Exception):
+def _log_error_to_file(command: str, error: Exception) -> None:
     """Write error details to .multi-agent/logs/."""
     try:
         from datetime import datetime
@@ -141,7 +144,7 @@ from multi_agent.cli_watch import (  # noqa: E402 — re-export for mock compati
 )
 
 
-def _is_task_terminal_or_missing(app, task_id: str) -> bool:
+def _is_task_terminal_or_missing(app: Any, task_id: str) -> bool:
     """Return True if a locked task is already terminal or has no graph state."""
     try:
         snapshot = app.get_state(_make_config(task_id))
@@ -186,7 +189,7 @@ def _mark_task_inactive(task_id: str, *, status: str, reason: str) -> bool:
         return False
 
 
-def _sigterm_handler(signum, frame):
+def _sigterm_handler(signum: int, frame: Any) -> None:
     """Graceful SIGTERM handler — release lock and clean runtime."""
     try:
         if read_lock():
@@ -200,13 +203,13 @@ def _sigterm_handler(signum, frame):
 
 @click.group()
 @click.option("--verbose", is_flag=True, default=False, help="Show full traceback on errors")
-def main(verbose: bool):
+def main(verbose: bool) -> None:
     """ma — Multi-Agent 协作 CLI. 一条命令协调多个 IDE AI."""
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
 
 @main.group()
-def session():
+def session() -> None:
     """IDE-first 会话命令族（LangGraph 单入口）."""
 
 
@@ -216,7 +219,7 @@ def session():
 @click.option("--config", "config_path", default="config/workmode.yaml", help="Workmode 配置路径")
 @click.option("--reset", is_flag=True, default=False, help="重置同 task_id 的历史 checkpoint 后再启动")
 @handle_errors
-def session_start(task_file: str, mode: str, config_path: str, reset: bool):
+def session_start(task_file: str, mode: str, config_path: str, reset: bool) -> None:
     """启动 IDE 会话并生成各 agent 的提示词文件."""
     from multi_agent.session import start_session
 
@@ -227,7 +230,7 @@ def session_start(task_file: str, mode: str, config_path: str, reset: bool):
 @session.command("status")
 @click.option("--task-id", required=True, help="Task ID")
 @handle_errors
-def session_status_cmd(task_id: str):
+def session_status_cmd(task_id: str) -> None:
     """查看会话状态（owner、角色、状态、提示词路径）."""
     from multi_agent.session import session_status
 
@@ -242,7 +245,7 @@ def session_status_cmd(task_id: str):
 @click.option("--out", default=None, type=click.Path(), help="提示词输出文件路径（默认 prompts/current-<agent>.txt）")
 @click.option("--json-meta", "json_meta", is_flag=True, default=False, help="输出元信息 JSON 而不是提示词正文")
 @handle_errors
-def session_pull_cmd(task_id: str, agent: str, out: str | None, json_meta: bool):
+def session_pull_cmd(task_id: str, agent: str, out: str | None, json_meta: bool) -> None:
     """拉取某个 agent 当前提示词（纯 IDE 文本，无终端命令）."""
     from multi_agent.session import session_pull
 
@@ -260,7 +263,7 @@ def session_pull_cmd(task_id: str, agent: str, out: str | None, json_meta: bool)
 @click.option("--agent", required=True, help="Agent ID")
 @click.option("--file", "file_path", required=True, type=click.Path(exists=True), help="agent 输出文件（JSON 或包含 JSON 代码块）")
 @handle_errors
-def session_push_cmd(task_id: str, agent: str, file_path: str):
+def session_push_cmd(task_id: str, agent: str, file_path: str) -> None:
     """提交 agent 输出并自动推进到下一角色或终态."""
     from multi_agent.session import session_push
 
@@ -350,7 +353,7 @@ def _ensure_no_active_task(app: Any) -> None:
 @click.option("--mode", default="strict", help="Workmode profile 名称")
 @click.option("--config", "mode_config_path", default="config/workmode.yaml", help="Workmode 配置路径")
 @handle_errors
-def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer: str, retry_budget: int, timeout: int, no_watch: bool, decompose: bool, auto_confirm: bool, decompose_file: str | None, no_cache: bool, mode: str, mode_config_path: str):
+def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer: str, retry_budget: int, timeout: int, no_watch: bool, decompose: bool, auto_confirm: bool, decompose_file: str | None, no_cache: bool, mode: str, mode_config_path: str) -> None:
     """Start a new task and watch for IDE output.
 
     Starts the task, then auto-watches outbox/ for agent output.
@@ -421,8 +424,8 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
                      retry_budget, timeout, no_watch, mode, review_policy)
 
 
-def _run_single_task(app, task_id, requirement, skill, builder, reviewer,
-                     retry_budget, timeout, no_watch, workflow_mode, review_policy):
+def _run_single_task(app: Any, task_id: str, requirement: str, skill: str, builder: str, reviewer: str,
+                     retry_budget: int, timeout: int, no_watch: bool, workflow_mode: str, review_policy: Any) -> None:
     """Run a single monolithic build-review cycle (original behavior)."""
     from multi_agent.orchestrator import TaskStartError, start_task
 
@@ -540,7 +543,7 @@ def _read_done_output(role: str, file_path: str | None) -> dict[str, Any]:
 @handle_errors
 @click.option("--task-id", default=None, help="Task ID (auto-detect if only one active)")
 @click.option("--file", "file_path", default=None, type=click.Path(exists=True), help="Read output from file")
-def done(task_id: str | None, file_path: str | None):
+def done(task_id: str | None, file_path: str | None) -> None:
     """手动提交 IDE 输出并推进任务.
 
     自动从 .multi-agent/outbox/ 读取当前角色的 JSON 输出,
@@ -600,7 +603,7 @@ def done(task_id: str | None, file_path: str | None):
 @main.command()
 @handle_errors
 @click.option("--task-id", default=None, help="Task ID")
-def status(task_id: str | None):
+def status(task_id: str | None) -> None:
     """Show current task status."""
     from multi_agent.graph import compile_graph
 
@@ -657,7 +660,7 @@ def status(task_id: str | None):
 @handle_errors
 @click.option("--task-id", default=None)
 @click.option("--reason", default="user cancelled")
-def cancel(task_id: str | None, reason: str):
+def cancel(task_id: str | None, reason: str) -> None:
     """Cancel the current task."""
     from multi_agent.graph import compile_graph
 
@@ -690,7 +693,7 @@ def cancel(task_id: str | None, reason: str):
 @handle_errors
 @click.option("--task-id", default=None)
 @click.option("--interval", default=2.0, type=float, help="Poll interval in seconds")
-def watch(task_id: str | None, interval: float):
+def watch(task_id: str | None, interval: float) -> None:
     """自动检测 IDE 输出并推进任务.
 
     恢复之前中断的自动检测.
@@ -730,7 +733,7 @@ def watch(task_id: str | None, interval: float):
     _run_watch_loop(app, config, task_id, interval=interval)
 
 
-def _detect_active_task(app=None) -> str | None:
+def _detect_active_task(app: Any = None) -> str | None:
     """Detect the active task from task YAML markers in workspace."""
     from multi_agent.config import tasks_dir
     td = tasks_dir()

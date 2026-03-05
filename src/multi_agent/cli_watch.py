@@ -66,7 +66,7 @@ def _normalize_resume_output(role: str, data: dict[str, Any], state_values: dict
     return out
 
 
-def _show_waiting(app, config):
+def _show_waiting(app: Any, config: dict[str, Any]) -> None:
     """Show current waiting state — auto-spawn CLI agents or show manual instructions."""
     from multi_agent.orchestrator import get_task_status
 
@@ -157,7 +157,7 @@ def _show_next_agent(next_status: Any, ts: str) -> None:
         click.echo('             "帮我完成 @.multi-agent/TASK.md 里的任务"')
 
 
-def _process_outbox(poller, role, agent, status, app, task_id, ts, manage_lock):
+def _process_outbox(poller: Any, role: str, agent: str, status: Any, app: Any, task_id: str, ts: str, manage_lock: bool) -> str:
     """Check outbox for matching role output, validate, and resume. Returns 'return' to stop loop."""
     from multi_agent.orchestrator import resume_task
 
@@ -192,7 +192,7 @@ def _process_outbox(poller, role, agent, status, app, task_id, ts, manage_lock):
     return "continue"
 
 
-def _run_watch_loop(app, config, task_id: str, interval: float = 2.0, manage_lock: bool = True):
+def _run_watch_loop(app: Any, config: dict[str, Any], task_id: str, interval: float = 2.0, manage_lock: bool = True) -> None:
     """Shared watch loop — polls outbox/ and auto-submits output."""
     from multi_agent.orchestrator import get_task_status
     from multi_agent.watcher import OutboxPoller

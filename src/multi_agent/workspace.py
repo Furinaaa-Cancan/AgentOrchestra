@@ -13,8 +13,6 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypeVar
 
-_F = TypeVar("_F", bound=Callable[..., Any])
-
 from multi_agent.config import (
     history_dir,
     inbox_dir,
@@ -22,6 +20,8 @@ from multi_agent.config import (
     tasks_dir,
     workspace_dir,
 )
+
+_F = TypeVar("_F", bound=Callable[..., Any])
 
 _log = logging.getLogger(__name__)
 

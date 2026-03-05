@@ -266,7 +266,7 @@ def _config(task_id: str) -> dict[str, Any]:
     return make_config(task_id)
 
 
-def compile_graph():
+def compile_graph() -> Any:
     """Compatibility wrapper for tests and call sites.
 
     Delegates to orchestrator.compile_graph(). Kept as a module attribute
@@ -276,7 +276,7 @@ def compile_graph():
     return _orch_compile()
 
 
-def _compile_graph_app():
+def _compile_graph_app() -> Any:
     # Indirect call keeps compatibility with tests monkeypatching
     # multi_agent.session.compile_graph while still avoiding stale imports.
     return compile_graph()

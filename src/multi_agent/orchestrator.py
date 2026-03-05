@@ -49,7 +49,7 @@ def _is_terminal(final_status: str | None) -> bool:
 # ── Graph Compilation ────────────────────────────────────
 
 
-def compile_graph():
+def compile_graph() -> Any:
     """Compile the LangGraph workflow — single call-site.
 
     Both cli.py and session.py previously had their own compile wrappers.

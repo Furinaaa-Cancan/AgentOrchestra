@@ -183,7 +183,7 @@ def spawn_cli_agent(
         outbox_file=shlex.quote(outbox_file),
     )
 
-    def _run():
+    def _run() -> None:
         proc = None
         try:
             # Task 9: stream stderr in real-time instead of capture_output
@@ -202,11 +202,11 @@ def spawn_cli_agent(
             stdout_lines: list[str] = []
             stderr_lines: list[str] = []
 
-            def _drain_stdout():
+            def _drain_stdout() -> None:
                 if proc.stdout:
                     stdout_lines.append(proc.stdout.read())
 
-            def _drain_stderr():
+            def _drain_stderr() -> None:
                 stderr_lines.append(_stream_stderr(proc, agent_id, role))
 
             stdout_thread = threading.Thread(target=_drain_stdout, daemon=True)

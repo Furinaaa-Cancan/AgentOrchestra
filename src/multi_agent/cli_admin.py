@@ -37,7 +37,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
     @handle_errors
     @click.option("--limit", default=20, type=int, help="Max number of tasks to show")
     @click.option("--status", "filter_status", default=None, help="Filter by status (active/approved/failed/cancelled)")
-    def history(limit: int, filter_status: str | None):
+    def history(limit: int, filter_status: str | None) -> None:
         """查看历史任务记录."""
         import yaml
 
@@ -79,7 +79,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
     @main.command()
     @handle_errors
     @click.option("--force", is_flag=True, default=False, help="Overwrite existing files")
-    def init(force: bool):
+    def init(force: bool) -> None:
         """初始化 AgentOrchestra 项目."""
         from pathlib import Path
 
@@ -147,7 +147,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
     @click.option("--builder-output", "builder_output_file", default=None,
                   type=click.Path(exists=True), help="Builder output JSON (required for reviewer role)")
     @handle_errors
-    def render(requirement: str, skill: str, role: str, builder_output_file: str | None):
+    def render(requirement: str, skill: str, role: str, builder_output_file: str | None) -> None:
         """预览 prompt（不执行任何操作）."""
         _validate_skill_id(skill)
         import json
@@ -189,7 +189,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
 
     @main.command("cache-stats")
     @handle_errors
-    def cache_stats():
+    def cache_stats() -> None:
         """显示 LRU 缓存命中率."""
         from multi_agent.config import root_dir
         info = root_dir.cache_info()
@@ -203,7 +203,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
                     type=click.Choice(["all", "Task", "BuilderOutput", "ReviewerOutput",
                                        "SubTask", "DecomposeResult"], case_sensitive=False))
     @handle_errors
-    def schema(model: str):
+    def schema(model: str) -> None:
         """导出 Pydantic 模型的 JSON Schema."""
         import json as _json
 
@@ -233,7 +233,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
     @main.command()
     @click.option("--days", default=7, type=int, help="Max age in days")
     @handle_errors
-    def cleanup(days: int):
+    def cleanup(days: int) -> None:
         """清理旧的 workspace 文件."""
         from multi_agent.workspace import cleanup_old_files
         deleted = cleanup_old_files(max_age_days=days)
@@ -244,7 +244,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
     @main.command()
     @handle_errors
     @click.option("--fix", is_flag=True, default=False, help="Attempt to auto-fix common state inconsistencies")
-    def doctor(fix: bool):
+    def doctor(fix: bool) -> None:
         """检查 workspace 健康状态."""
         from multi_agent.workspace import check_workspace_health, get_workspace_stats
         issues = check_workspace_health()
@@ -275,7 +275,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
 
     @main.command()
     @handle_errors
-    def agents():
+    def agents() -> None:
         """显示所有 agent 状态."""
         from multi_agent.router import check_agent_health, load_agents
         agent_list = load_agents()
@@ -293,7 +293,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
 
     @main.command("list-skills")
     @handle_errors
-    def list_skills():
+    def list_skills() -> None:
         """列出所有可用 skill."""
         from multi_agent.config import skills_dir
         sd = skills_dir()
@@ -328,7 +328,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
     @click.option("--format", "fmt", default="json",
                   type=click.Choice(["json", "markdown"]), help="Export format")
     @handle_errors
-    def export(task_id: str, fmt: str):
+    def export(task_id: str, fmt: str) -> None:
         """导出任务执行结果."""
         _validate_task_id(task_id)
         import json as _json
@@ -372,7 +372,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
     @click.argument("task_id")
     @click.option("--from-step", "from_step", default=0, type=int, help="Start from step N")
     @handle_errors
-    def replay(task_id: str, from_step: int):
+    def replay(task_id: str, from_step: int) -> None:
         """重放任务历史."""
         _validate_task_id(task_id)
         import json as _json
@@ -401,7 +401,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
 
     @main.command()
     @handle_errors
-    def version():
+    def version() -> None:
         """显示版本信息."""
         import sys
         from pathlib import Path
@@ -417,7 +417,7 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
     @click.option("--task-id", required=True, help="Task ID")
     @click.option("--format", "fmt", default="tree", type=click.Choice(["tree", "mermaid"]), help="Trace 输出格式")
     @handle_errors
-    def trace_cmd(task_id: str, fmt: str):
+    def trace_cmd(task_id: str, fmt: str) -> None:
         """输出会话事件轨迹（tree 或 mermaid）."""
         from multi_agent.session import session_trace
 
