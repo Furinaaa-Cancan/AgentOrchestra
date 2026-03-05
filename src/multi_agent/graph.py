@@ -327,8 +327,8 @@ def plan_node(state: WorkflowState) -> dict[str, Any]:
         "task_started_at": state.get("task_started_at") or now,  # type: ignore[dict-item]
         # Reset per-node timestamps so retry cycles measure from plan_node,
         # not from the *previous* build/review (stale ref_time → false timeout).
-        "build_started_at": None,
-        "review_started_at": None,
+        "build_started_at": None,  # type: ignore[dict-item]  # LangGraph partial state
+        "review_started_at": None,  # type: ignore[dict-item]  # LangGraph partial state
         "conversation": [
             {"role": "orchestrator", "action": "assigned", "agent": builder_id, "t": now}
         ],
