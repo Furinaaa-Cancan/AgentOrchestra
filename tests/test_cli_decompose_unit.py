@@ -352,3 +352,172 @@ class TestRetrySubTask:
             MagicMock(),  # watch_loop
         )
         assert result["status"] == "approved"
+
+
+# ── _wait_for_decompose_agent ────────────────────────────
+
+
+class TestWaitForDecomposeAgent:
+    """Cover lines 45-78 of cli_decompose.py."""
+
+    @patch("multi_agent.cli_decompose.time")
+    def test_returns_on_result(self, mock_time):
+        from multi_agent.cli_decompose import _wait_for_decompose_agent
+        mock_time.time.return_value = 0
+        mock_time.sleep = MagicMock()
+        with patch("multi_agent.decompose.write_decompose_prompt"), \
+             patch("multi_agent.decompose.read_decompose_result", return_value=_decompose_result()), \
+             patch("multi_agent.driver.get_agent_driver", return_value={"driver": "file", "command": ""}), \
+             patch("multi_agent.router.load_agents", return_value=[]):
+            result = _wait_for_decompose_agent("req", "ws", 60)
+        assert result is not None
+
+    @patch("multi_agent.cli_decompose.time")
+    def test_timeout_exits(self, mock_time):
+        from multi_agent.cli_decompose import _wait_for_decompose_agent
+        call_count = [0]
+        def fake_time():
+            call_count[0] += 1
+            return 0 if call_count[0] <= 1 else 9999
+        mock_time.time = fake_time
+        mock_time.sleep = MagicMock()
+        with patch("multi_agent.decompose.write_decompose_prompt"), \
+             patch("multi_agent.decompose.read_decompose_result", return_value=None), \
+             patch("multi_agent.driver.get_agent_driver", return_value={"driver": "file", "command": ""}), \
+             patch("multi_agent.router.load_agents", return_value=[]), \
+             patch("multi_agent.workspace.release_lock"), \
+             patch("multi_agent.workspace.clear_runtime"), \
+             pytest.raises(SystemExit):
+            _wait_for_decompose_agent("req", "ws", 60)
+
+    @patch("multi_agent.cli_decompose.time")
+    def test_keyboard_interrupt_returns_none(self, mock_time):
+        from multi_agent.cli_decompose import _wait_for_decompose_agent
+        mock_time.time.return_value = 0
+        mock_time.sleep.side_effect = KeyboardInterrupt
+        with patch("multi_agent.decompose.write_decompose_prompt"), \
+             patch("multi_agent.decompose.read_decompose_result", return_value=None), \
+             patch("multi_agent.driver.get_agent_driver", return_value={"driver": "file", "command": ""}), \
+             patch("multi_agent.router.load_agents", return_value=[]), \
+             patch("multi_agent.workspace.release_lock"), \
+             patch("multi_agent.workspace.clear_runtime"):
+            result = _wait_for_decompose_agent("req", "ws", 60)
+        assert result is None
+
+    @patch("multi_agent.cli_decompose.time")
+    def test_cli_driver_spawns_agent(self, mock_time):
+        from multi_agent.cli_decompose import _wait_for_decompose_agent
+        mock_time.time.return_value = 0
+        mock_time.sleep = MagicMock()
+        agent = SimpleNamespace(id="test-agent")
+        with patch("multi_agent.decompose.write_decompose_prompt"), \
+             patch("multi_agent.decompose.read_decompose_result", return_value=_decompose_result()), \
+             patch("multi_agent.driver.get_agent_driver", return_value={"driver": "cli", "command": "test cmd"}), \
+             patch("multi_agent.driver.can_use_cli", return_value=True), \
+             patch("multi_agent.driver.spawn_cli_agent") as mock_spawn, \
+             patch("multi_agent.router.load_agents", return_value=[agent]):
+            result = _wait_for_decompose_agent("req", "", 60)
+        mock_spawn.assert_called_once()
+        assert result is not None
+
+
+# ── _handle_failure interactive ──────────────────
+
+
+class TestHandleFailedSubTaskInteractive:
+    """Cover lines 260-287: retry/skip/abort interactive paths."""
+
+    def _make_ctx(self, auto_confirm: bool = False) -> _DecomposeExecContext:
+        return _DecomposeExecContext(
+            app=MagicMock(), parent_task_id="p-1",
+            builder="ws", reviewer="cursor",
+            timeout=60, retry_budget=2,
+            workflow_mode="strict", review_policy={},
+            no_watch=True, auto_confirm=auto_confirm,
+            make_config=lambda tid: {"configurable": {"thread_id": tid}},
+            build_state=MagicMock(return_value={"task_id": "s"}),
+            start_task=MagicMock(), start_error=RuntimeError,
+            show_waiting=MagicMock(), watch_loop=MagicMock(),
+            save_yaml=MagicMock(), save_ckpt=MagicMock(),
+            clear_rt=MagicMock(),
+        )
+
+    def test_auto_confirm_adds_to_failed(self):
+        ctx = self._make_ctx(auto_confirm=True)
+        st = _sub("a")
+        prior = [{"sub_id": "a", "status": "failed"}]
+        completed: set[str] = set()
+        failed: set[str] = set()
+        result = ctx._handle_failure(st, time.time(), prior, completed, failed)
+        assert result is None
+        assert "a" in failed
+
+    @patch("click.prompt", return_value="skip")
+    def test_skip_adds_to_failed(self, mock_prompt):
+        ctx = self._make_ctx(auto_confirm=False)
+        st = _sub("a")
+        prior = [{"sub_id": "a", "status": "failed"}]
+        completed: set[str] = set()
+        failed: set[str] = set()
+        result = ctx._handle_failure(st, time.time(), prior, completed, failed)
+        assert result is None
+        assert "a" in failed
+
+    @patch("click.prompt", return_value="abort")
+    def test_abort_returns_break(self, mock_prompt):
+        ctx = self._make_ctx(auto_confirm=False)
+        st = _sub("a")
+        prior = [{"sub_id": "a", "status": "failed"}]
+        completed: set[str] = set()
+        failed: set[str] = set()
+        result = ctx._handle_failure(st, time.time(), prior, completed, failed)
+        assert result == "break"
+        assert "a" in failed
+
+    @patch("click.prompt", return_value="retry")
+    def test_retry_succeeds(self, mock_prompt):
+        ctx = self._make_ctx(auto_confirm=False)
+        st = _sub("a")
+        prior = [{"sub_id": "a", "status": "failed"}]
+        completed: set[str] = set()
+        failed: set[str] = set()
+        with patch("multi_agent.cli_decompose._retry_sub_task", return_value={"sub_id": "a", "status": "approved"}):
+            result = ctx._handle_failure(st, time.time(), prior, completed, failed)
+        assert result is None
+        assert "a" in completed
+        assert "a" not in failed
+
+    @patch("click.prompt", return_value="retry")
+    def test_retry_fails_again(self, mock_prompt):
+        ctx = self._make_ctx(auto_confirm=False)
+        st = _sub("a")
+        prior = [{"sub_id": "a", "status": "failed"}]
+        completed: set[str] = set()
+        failed: set[str] = set()
+        with patch("multi_agent.cli_decompose._retry_sub_task", return_value={"sub_id": "a", "status": "failed"}):
+            result = ctx._handle_failure(st, time.time(), prior, completed, failed)
+        assert result is None
+        assert "a" in failed
+
+
+# ── _display_sub_tasks extended ──────────────────────────
+
+
+class TestDisplaySubTasksExtended:
+    """Cover lines 402, 405-408: parallel group display + topo_sort error fallback."""
+
+    def test_parallel_group_display(self, capsys):
+        tasks = [_sub("a"), _sub("b"), _sub("c", deps=["a", "b"])]
+        dr = _decompose_result(tasks)
+        _display_sub_tasks(dr, tasks)
+        out = capsys.readouterr().out
+        assert "3 个子任务" in out
+
+    def test_topo_sort_error_fallback(self, capsys):
+        tasks = [_sub("a", deps=["b"]), _sub("b", deps=["a"])]
+        dr = _decompose_result(tasks)
+        with patch("multi_agent.decompose.topo_sort_grouped", side_effect=ValueError("cycle")):
+            _display_sub_tasks(dr, tasks)
+        out = capsys.readouterr().out
+        assert "a" in out
+        assert "b" in out
