@@ -433,7 +433,7 @@ python3 -m ruff check src/  # Lint
 
 ## License
 
-CC BY-NC-SA 4.0，详见 `LICENSE`。
+AGPL-3.0，详见 `LICENSE`。
 
 ---
 
