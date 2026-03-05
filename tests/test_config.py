@@ -1,13 +1,12 @@
 """Tests for config module."""
 
 import warnings
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 import yaml
 
-from multi_agent.config import load_project_config, root_dir, _find_root, agents_profile_path
+from multi_agent.config import _find_root, agents_profile_path, load_project_config, root_dir
 
 
 class TestLoadProjectConfig:
@@ -42,10 +41,10 @@ class TestLoadProjectConfig:
         """Malformed YAML issues warning and returns empty dict."""
         ma_yaml = tmp_path / ".ma.yaml"
         ma_yaml.write_text(":::\n  bad: [yaml", encoding="utf-8")
-        with patch("multi_agent.config.root_dir", return_value=tmp_path):
-            with warnings.catch_warnings(record=True) as w:
-                warnings.simplefilter("always")
-                result = load_project_config()
+        with patch("multi_agent.config.root_dir", return_value=tmp_path), \
+             warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = load_project_config()
         assert result == {}
         assert any(".ma.yaml" in str(warning.message) for warning in w)
 
@@ -53,10 +52,10 @@ class TestLoadProjectConfig:
         """YAML that parses to a non-dict (e.g. a list) issues warning."""
         ma_yaml = tmp_path / ".ma.yaml"
         ma_yaml.write_text("- item1\n- item2\n", encoding="utf-8")
-        with patch("multi_agent.config.root_dir", return_value=tmp_path):
-            with warnings.catch_warnings(record=True) as w:
-                warnings.simplefilter("always")
-                result = load_project_config()
+        with patch("multi_agent.config.root_dir", return_value=tmp_path), \
+             warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = load_project_config()
         assert result == {}
         assert any("not a valid mapping" in str(warning.message) for warning in w)
 
@@ -93,7 +92,7 @@ class TestFindRoot:
         try:
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
-                result = _find_root()
+                _find_root()
             assert any("Could not find" in str(warning.message) for warning in w)
         finally:
             root_dir.cache_clear()
@@ -393,8 +392,14 @@ class TestPathFunctions:
 
     def test_all_paths(self, tmp_path, monkeypatch):
         from multi_agent.config import (
-            workspace_dir, skills_dir, inbox_dir, outbox_dir,
-            tasks_dir, history_dir, dashboard_path, store_db_path,
+            dashboard_path,
+            history_dir,
+            inbox_dir,
+            outbox_dir,
+            skills_dir,
+            store_db_path,
+            tasks_dir,
+            workspace_dir,
         )
         (tmp_path / "skills").mkdir()
         (tmp_path / "agents").mkdir()

@@ -4,15 +4,11 @@ _mark_task_status, normalize_file_path_for_lock, session_trace."""
 
 from __future__ import annotations
 
-import json
 import sqlite3
-from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import yaml
-
 
 # ── _task_requirement ────────────────────────────────────
 
@@ -26,7 +22,7 @@ class TestTaskRequirement:
     def test_from_endpoint_and_framework(self):
         from multi_agent.session import _task_requirement
         task = {"input_payload": {"endpoint": "/users", "framework": "FastAPI"}}
-        assert "Implement /users with FastAPI" == _task_requirement(task)
+        assert _task_requirement(task) == "Implement /users with FastAPI"
 
     def test_from_done_criteria(self):
         from multi_agent.session import _task_requirement

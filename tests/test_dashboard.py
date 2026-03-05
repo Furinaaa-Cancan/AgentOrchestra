@@ -1,6 +1,5 @@
 """Tests for the dashboard generator."""
 
-import pytest
 
 from multi_agent.dashboard import generate_dashboard, write_dashboard
 
@@ -68,7 +67,6 @@ class TestGenerateDashboard:
 
     def test_conversation_uses_event_timestamp(self):
         """Conversation entries with 't' field should use event time, not render time."""
-        import time
         # Use a fixed timestamp: 2024-01-01 12:30:45 UTC
         fixed_t = 1704112245.0
         content = generate_dashboard(

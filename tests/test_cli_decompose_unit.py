@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import time
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -25,7 +24,6 @@ from multi_agent.cli_decompose import (
     _validate_and_sort,
 )
 from multi_agent.schema import DecomposeResult, SubTask
-
 
 # ── helpers ──────────────────────────────────────────────
 
@@ -118,17 +116,17 @@ class TestCollectSubResult:
 
 class TestDecomposeExecContext:
     def _make_ctx(self, **overrides: Any) -> _DecomposeExecContext:
-        defaults = dict(
-            app=MagicMock(), parent_task_id="parent-1",
-            builder="ws", reviewer="cursor", timeout=60, retry_budget=2,
-            workflow_mode="normal", review_policy={},
-            no_watch=False, auto_confirm=True,
-            make_config=lambda tid: {"configurable": {"thread_id": tid}},
-            build_state=MagicMock(return_value={"task_id": "sub-1"}),
-            start_task=MagicMock(), start_error=RuntimeError,
-            show_waiting=MagicMock(), watch_loop=MagicMock(),
-            save_yaml=MagicMock(), save_ckpt=MagicMock(), clear_rt=MagicMock(),
-        )
+        defaults = {
+            "app": MagicMock(), "parent_task_id": "parent-1",
+            "builder": "ws", "reviewer": "cursor", "timeout": 60, "retry_budget": 2,
+            "workflow_mode": "normal", "review_policy": {},
+            "no_watch": False, "auto_confirm": True,
+            "make_config": lambda tid: {"configurable": {"thread_id": tid}},
+            "build_state": MagicMock(return_value={"task_id": "sub-1"}),
+            "start_task": MagicMock(), "start_error": RuntimeError,
+            "show_waiting": MagicMock(), "watch_loop": MagicMock(),
+            "save_yaml": MagicMock(), "save_ckpt": MagicMock(), "clear_rt": MagicMock(),
+        }
         defaults.update(overrides)
         return _DecomposeExecContext(**defaults)
 

@@ -1,11 +1,11 @@
 """Tests for meta-graph orchestration module."""
 
 from multi_agent.meta_graph import (
-    generate_sub_task_id,
-    build_sub_task_state,
     aggregate_results,
+    build_sub_task_state,
     format_prior_context,
     generate_aggregate_report,
+    generate_sub_task_id,
 )
 from multi_agent.schema import SubTask
 

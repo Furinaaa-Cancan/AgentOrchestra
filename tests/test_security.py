@@ -146,7 +146,6 @@ class TestGraphSnapshotSanitization:
     """Verify graph.py sanitizes task_id/node_name in snapshot paths."""
 
     def test_snapshot_path_no_traversal(self):
-        from multi_agent.graph import save_state_snapshot
         # Should not raise even with malicious-looking task_id
         # because the function sanitizes via regex
         # Just verify it doesn't create files outside snapshots dir

@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
 
 from click.testing import CliRunner
 
 from multi_agent.cli import main
-
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -63,7 +61,7 @@ class TestReadmeExamples:
         )
         # Last line: "N tests collected"
         lines = proc.stdout.strip().splitlines()
-        collected_line = [l for l in lines if "test" in l and "collected" in l]
+        collected_line = [ln for ln in lines if "test" in ln and "collected" in ln]
         if collected_line:
             actual = int(re.search(r"(\d+)\s+test", collected_line[0]).group(1))
             assert badge_count == actual, f"Badge says {badge_count} but {actual} tests collected"

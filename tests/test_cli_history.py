@@ -1,9 +1,8 @@
 """Tests for ma history command (Task 15)."""
 
-import yaml
-from pathlib import Path
 from unittest.mock import patch
 
+import yaml
 from click.testing import CliRunner
 
 from multi_agent.cli import main

@@ -2,12 +2,9 @@
 
 from pathlib import Path
 
-import pytest
-
 from multi_agent.contract import load_contract
-from multi_agent.prompt import render_builder_prompt, render_reviewer_prompt, _template_dir
+from multi_agent.prompt import _template_dir, render_builder_prompt, render_reviewer_prompt
 from multi_agent.schema import Task
-
 
 SKILLS_DIR = Path(__file__).parent.parent / "skills"
 
@@ -311,7 +308,7 @@ class TestSkillSpecificTemplates:
         assert "Builder" in result
 
     def test_unknown_skill_falls_back_to_generic(self):
-        from multi_agent.prompt import _resolve_template, _env
+        from multi_agent.prompt import _env, _resolve_template
         env = _env()
         tmpl = _resolve_template(env, "nonexistent-skill", "builder")
         assert tmpl == "builder.md.j2"

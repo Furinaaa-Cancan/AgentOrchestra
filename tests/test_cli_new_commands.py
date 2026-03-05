@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
@@ -74,21 +74,21 @@ class TestInitCommand:
     """Task 75: ma init command."""
 
     def test_init_creates_structure(self, runner, tmp_path):
-        with runner.isolated_filesystem(temp_dir=tmp_path) as td:
+        with runner.isolated_filesystem(temp_dir=tmp_path):
             with patch("multi_agent.cli.ensure_workspace"):
                 result = runner.invoke(main, ["init"])
             assert result.exit_code == 0
             assert "初始化完成" in result.output
 
     def test_init_already_initialized(self, runner, tmp_path):
-        with runner.isolated_filesystem(temp_dir=tmp_path) as td:
+        with runner.isolated_filesystem(temp_dir=tmp_path):
             Path("skills").mkdir()
             Path("agents").mkdir()
             result = runner.invoke(main, ["init"])
             assert "已初始化" in result.output
 
     def test_init_force(self, runner, tmp_path):
-        with runner.isolated_filesystem(temp_dir=tmp_path) as td:
+        with runner.isolated_filesystem(temp_dir=tmp_path):
             Path("skills").mkdir()
             Path("agents").mkdir()
             with patch("multi_agent.cli.ensure_workspace"):
@@ -157,8 +157,8 @@ class TestExportCommand:
     """Task 98: ma export command."""
 
     def test_export_json(self, runner, tmp_root):
-        from multi_agent.workspace import ensure_workspace
         from multi_agent.config import history_dir
+        from multi_agent.workspace import ensure_workspace
         ensure_workspace()
         hd = history_dir()
         hd.mkdir(parents=True, exist_ok=True)
@@ -172,8 +172,8 @@ class TestExportCommand:
         assert len(data["conversation"]) == 1
 
     def test_export_markdown(self, runner, tmp_root):
-        from multi_agent.workspace import ensure_workspace
         from multi_agent.config import history_dir
+        from multi_agent.workspace import ensure_workspace
         ensure_workspace()
         hd = history_dir()
         hd.mkdir(parents=True, exist_ok=True)
@@ -189,8 +189,8 @@ class TestReplayCommand:
     """Task 99: ma replay command."""
 
     def test_replay_task(self, runner, tmp_root):
-        from multi_agent.workspace import ensure_workspace
         from multi_agent.config import history_dir
+        from multi_agent.workspace import ensure_workspace
         ensure_workspace()
         hd = history_dir()
         hd.mkdir(parents=True, exist_ok=True)
@@ -205,8 +205,8 @@ class TestReplayCommand:
         assert "builder" in result.output
 
     def test_replay_from_step(self, runner, tmp_root):
-        from multi_agent.workspace import ensure_workspace
         from multi_agent.config import history_dir
+        from multi_agent.workspace import ensure_workspace
         ensure_workspace()
         hd = history_dir()
         hd.mkdir(parents=True, exist_ok=True)

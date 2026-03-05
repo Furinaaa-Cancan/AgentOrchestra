@@ -15,7 +15,6 @@ from multi_agent.cli_watch import (
     _show_waiting,
 )
 
-
 # ── _normalize_resume_output ─────────────────────────────
 
 

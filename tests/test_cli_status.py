@@ -1,6 +1,6 @@
 """Task 37: Tests for ma status command."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner

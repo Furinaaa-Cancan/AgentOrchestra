@@ -5,12 +5,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
-
 
 # ── _log_error_to_file ───────────────────────────────────
 
@@ -187,7 +185,7 @@ class TestAutoFixRuntimeConsistency:
         from multi_agent.cli import _auto_fix_runtime_consistency
         with patch("multi_agent.cli._detect_active_task", return_value="task-001"), \
              patch("multi_agent.cli.read_lock", return_value=None), \
-             patch("multi_agent.graph.compile_graph") as mock_cg, \
+             patch("multi_agent.graph.compile_graph"), \
              patch("multi_agent.cli._is_task_terminal_or_missing", return_value=True), \
              patch("multi_agent.cli._mark_task_inactive", return_value=True):
             actions = _auto_fix_runtime_consistency()
@@ -239,6 +237,7 @@ class TestAutoFixRuntimeConsistency:
 class TestSigtermHandler:
     def test_handler_raises_systemexit(self):
         import signal
+
         from multi_agent.cli import _sigterm_handler
         with patch("multi_agent.cli.read_lock", return_value="task-1"), \
              patch("multi_agent.cli.release_lock"), \
@@ -249,6 +248,7 @@ class TestSigtermHandler:
 
     def test_handler_no_lock(self):
         import signal
+
         from multi_agent.cli import _sigterm_handler
         with patch("multi_agent.cli.read_lock", return_value=None), \
              patch("multi_agent.cli.release_lock") as mock_rel, \

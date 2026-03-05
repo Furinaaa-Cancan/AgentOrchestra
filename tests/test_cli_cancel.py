@@ -1,6 +1,6 @@
 """Task 36: Tests for ma cancel command."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
@@ -45,7 +45,7 @@ class TestCancelCommand:
 
     def test_cancel_with_task_id(self, runner):
         with patch("multi_agent.graph.compile_graph", return_value=_mock_app()), \
-             patch("multi_agent.cli.save_task_yaml") as sty, \
+             patch("multi_agent.cli.save_task_yaml"), \
              patch("multi_agent.cli.release_lock"), \
              patch("multi_agent.cli.clear_runtime"):
             result = runner.invoke(main, ["cancel", "--task-id", "task-xyz"])

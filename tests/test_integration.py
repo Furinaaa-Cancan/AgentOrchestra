@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import json
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 class TestApproveFlow:
@@ -134,6 +131,7 @@ class TestBuildTimeout:
 
     def test_timeout_returns_failed(self):
         import time
+
         from multi_agent.graph import build_node
 
         state = {

@@ -6,8 +6,9 @@ import warnings
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from click.testing import CliRunner
+from pydantic import ValidationError
+
 from multi_agent.cli import main
 
 
@@ -15,7 +16,7 @@ class TestRegisterHook:
     """Task 13: register_hook public API tests."""
 
     def test_register_hook_plan_start(self):
-        from multi_agent.graph import register_hook, graph_hooks
+        from multi_agent.graph import graph_hooks, register_hook
         calls = []
         register_hook("plan_start", lambda state: calls.append("plan"))
         graph_hooks.fire_enter("plan", {})
@@ -24,7 +25,7 @@ class TestRegisterHook:
         graph_hooks._enter["plan"].pop()
 
     def test_register_hook_build_submit(self):
-        from multi_agent.graph import register_hook, graph_hooks
+        from multi_agent.graph import graph_hooks, register_hook
         calls = []
         register_hook("build_submit", lambda state, result: calls.append("build"))
         graph_hooks.fire_exit("build", {}, {})
@@ -32,7 +33,7 @@ class TestRegisterHook:
         graph_hooks._exit["build"].pop()
 
     def test_register_hook_task_failed(self):
-        from multi_agent.graph import register_hook, graph_hooks
+        from multi_agent.graph import graph_hooks, register_hook
         calls = []
         register_hook("task_failed", lambda node, state, err: calls.append("fail"))
         graph_hooks.fire_error("build", {}, Exception("test"))
@@ -40,7 +41,7 @@ class TestRegisterHook:
         graph_hooks._error.pop()
 
     def test_register_hook_unknown_event(self):
-        from multi_agent.graph import register_hook, graph_hooks
+        from multi_agent.graph import graph_hooks, register_hook
         calls = []
         register_hook("custom_event", lambda state: calls.append("custom"))
         graph_hooks.fire_enter("custom_event", {})
@@ -167,6 +168,7 @@ class TestValidateTaskId:
 
     def test_rejects_path_traversal(self):
         import click
+
         from multi_agent.cli import _validate_task_id
         for bad in ["../../etc/passwd", "../secret", "a/b", "task/../x"]:
             with pytest.raises(click.exceptions.BadParameter):
@@ -174,18 +176,21 @@ class TestValidateTaskId:
 
     def test_rejects_short_id(self):
         import click
+
         from multi_agent.cli import _validate_task_id
         with pytest.raises(click.exceptions.BadParameter):
             _validate_task_id("ab")
 
     def test_rejects_uppercase(self):
         import click
+
         from multi_agent.cli import _validate_task_id
         with pytest.raises(click.exceptions.BadParameter):
             _validate_task_id("Task-ABC")
 
     def test_rejects_special_chars(self):
         import click
+
         from multi_agent.cli import _validate_task_id
         for bad in ["task;rm", "task$(cmd)", "task\x00x", "task~home"]:
             with pytest.raises(click.exceptions.BadParameter):
@@ -234,10 +239,12 @@ class TestHandleErrorsDecorator:
             raise RuntimeError("boom")
 
         class _Root:
-            params = {"verbose": False}
+            def __init__(self):
+                self.params = {"verbose": False}
 
         class _Ctx:
-            params = {"task_id": "task-123"}
+            def __init__(self):
+                self.params = {"task_id": "task-123"}
 
             def find_root(self):
                 return _Root()
@@ -256,7 +263,7 @@ class TestHandleErrorsDecorator:
         def raise_kb():
             raise KeyboardInterrupt()
 
-        with patch("multi_agent.cli.read_lock", return_value="task-123") as rl, \
+        with patch("multi_agent.cli.read_lock", return_value="task-123"), \
              patch("multi_agent.cli.release_lock") as rel:
             with pytest.raises(SystemExit) as exc_info:
                 raise_kb()
@@ -271,7 +278,8 @@ class TestHandleErrorsDecorator:
             raise KeyboardInterrupt()
 
         class _Ctx:
-            params = {"task_id": "task-123"}
+            def __init__(self):
+                self.params = {"task_id": "task-123"}
 
         with patch("multi_agent.cli.click.get_current_context", return_value=_Ctx()), \
              patch("multi_agent.cli.read_lock", return_value="task-123"), \
@@ -287,6 +295,7 @@ class TestDuplicateSubTaskId:
 
     def test_duplicate_id_is_critical(self, tmp_path):
         import json
+
         from multi_agent.decompose import read_decompose_result
         outbox = tmp_path / "outbox"
         outbox.mkdir()
@@ -313,8 +322,9 @@ class TestDuplicateSubTaskId:
         assert any("duplicate" in e.lower() for e in errors)
 
     def test_validate_skill_id_rejects_path_traversal(self):
-        from multi_agent.cli import _validate_skill_id
         import click
+
+        from multi_agent.cli import _validate_skill_id
         for bad in ["../../etc", "../passwd", "a/b", "", " ", "a;rm"]:
             with pytest.raises(click.BadParameter):
                 _validate_skill_id(bad)
@@ -324,6 +334,7 @@ class TestDuplicateSubTaskId:
 
     def test_load_agents_skips_malformed_ids(self, tmp_path):
         import yaml
+
         from multi_agent.router import load_agents
         reg = {
             "agents": [
@@ -342,10 +353,11 @@ class TestDuplicateSubTaskId:
         assert "../evil" not in ids
 
     def test_agent_profile_rejects_path_traversal_id(self):
-        from multi_agent.schema import AgentProfile
         import pytest as _pt
+
+        from multi_agent.schema import AgentProfile
         for bad_id in ["../etc/passwd", "/root", "a;rm -rf", "", " "]:
-            with _pt.raises(Exception):
+            with _pt.raises((ValueError, ValidationError)):
                 AgentProfile(id=bad_id, capabilities=[])
         # Valid IDs accepted
         AgentProfile(id="windsurf", capabilities=[])
@@ -353,8 +365,9 @@ class TestDuplicateSubTaskId:
 
     def test_request_changes_cap_escalates(self):
         """Literature: SHIELDA pattern — soft retries must have a termination bound."""
-        from multi_agent.graph import _decide_node_inner, MAX_REQUEST_CHANGES
         from unittest.mock import patch as _p
+
+        from multi_agent.graph import MAX_REQUEST_CHANGES, _decide_node_inner
         # Build conversation with MAX_REQUEST_CHANGES request_changes entries
         convo = [{"role": "orchestrator", "action": "request_changes", "feedback": f"fix {i}", "t": 0}
                  for i in range(MAX_REQUEST_CHANGES)]
@@ -391,18 +404,21 @@ class TestLoadContractDefenseInDepth:
 
     def test_rejects_path_traversal(self):
         import pytest
+
         from multi_agent.contract import load_contract
         with pytest.raises(ValueError, match="Invalid skill_id"):
             load_contract("../../etc")
 
     def test_rejects_slash(self):
         import pytest
+
         from multi_agent.contract import load_contract
         with pytest.raises(ValueError, match="Invalid skill_id"):
             load_contract("foo/bar")
 
     def test_rejects_empty(self):
         import pytest
+
         from multi_agent.contract import load_contract
         with pytest.raises(ValueError, match="Invalid skill_id"):
             load_contract("")
@@ -410,6 +426,7 @@ class TestLoadContractDefenseInDepth:
     def test_accepts_valid_skill_id(self, tmp_path):
         """Valid skill_id passes validation (may fail on FileNotFoundError after)."""
         import pytest
+
         from multi_agent.contract import load_contract
         with pytest.raises(FileNotFoundError):
             load_contract("code-implement", base=tmp_path)
@@ -417,6 +434,7 @@ class TestLoadContractDefenseInDepth:
     def test_accepts_dotted_skill_id(self, tmp_path):
         """Dotted skill_ids like 'v2.code-impl' should pass validation."""
         import pytest
+
         from multi_agent.contract import load_contract
         with pytest.raises(FileNotFoundError):
             load_contract("v2.code-impl", base=tmp_path)
@@ -427,6 +445,7 @@ class TestReadOutboxLogging:
 
     def test_corrupt_json_logs_warning(self, tmp_path, caplog, monkeypatch):
         import logging
+
         from multi_agent import workspace
         monkeypatch.setattr(workspace, "outbox_dir", lambda: tmp_path)
         (tmp_path / "builder.json").write_text("{invalid json", encoding="utf-8")
@@ -436,7 +455,9 @@ class TestReadOutboxLogging:
         assert any("JSON parse error" in r.message for r in caplog.records)
 
     def test_non_dict_logs_warning(self, tmp_path, caplog, monkeypatch):
-        import json, logging
+        import json
+        import logging
+
         from multi_agent import workspace
         monkeypatch.setattr(workspace, "outbox_dir", lambda: tmp_path)
         (tmp_path / "builder.json").write_text(json.dumps([1, 2, 3]), encoding="utf-8")
@@ -446,7 +467,9 @@ class TestReadOutboxLogging:
         assert any("not a JSON object" in r.message for r in caplog.records)
 
     def test_validation_failure_logs_warning(self, tmp_path, caplog, monkeypatch):
-        import json, logging
+        import json
+        import logging
+
         from multi_agent import workspace
         monkeypatch.setattr(workspace, "outbox_dir", lambda: tmp_path)
         (tmp_path / "builder.json").write_text(json.dumps({"foo": "bar"}), encoding="utf-8")
@@ -456,7 +479,9 @@ class TestReadOutboxLogging:
         assert any("validation failed" in r.message for r in caplog.records)
 
     def test_valid_outbox_no_warning(self, tmp_path, caplog, monkeypatch):
-        import json, logging
+        import json
+        import logging
+
         from multi_agent import workspace
         monkeypatch.setattr(workspace, "outbox_dir", lambda: tmp_path)
         (tmp_path / "builder.json").write_text(
@@ -477,7 +502,6 @@ class TestRubberStampAuditTrail:
     def test_rubber_stamp_creates_audit_entry(self):
         """When reviewer_output has _rubber_stamp_warning, decide should include
         a rubber_stamp_warning conversation entry."""
-        import time
         from multi_agent.graph import _decide_node_inner
 
         state = {
@@ -529,7 +553,7 @@ class TestMetaGraphCheckpoint:
     """R16 C2: save/load/clear checkpoint for decompose crash recovery."""
 
     def test_save_and_load(self, tmp_path, monkeypatch):
-        from multi_agent import meta_graph, config
+        from multi_agent import config, meta_graph
         monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
         prior = [{"sub_id": "a", "status": "approved", "summary": "done"}]
         meta_graph.save_checkpoint("task-ckpt-test", prior, ["a"])
@@ -539,19 +563,19 @@ class TestMetaGraphCheckpoint:
         assert loaded["prior_results"][0]["sub_id"] == "a"
 
     def test_load_missing_returns_none(self, tmp_path, monkeypatch):
-        from multi_agent import meta_graph, config
+        from multi_agent import config, meta_graph
         monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
         assert meta_graph.load_checkpoint("task-nonexistent") is None
 
     def test_clear_removes_file(self, tmp_path, monkeypatch):
-        from multi_agent import meta_graph, config
+        from multi_agent import config, meta_graph
         monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
         meta_graph.save_checkpoint("task-clear-test", [], [])
         meta_graph.clear_checkpoint("task-clear-test")
         assert meta_graph.load_checkpoint("task-clear-test") is None
 
     def test_corrupt_checkpoint_returns_none(self, tmp_path, monkeypatch):
-        from multi_agent import meta_graph, config
+        from multi_agent import config, meta_graph
         monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
         ckpt_dir = tmp_path / "checkpoints"
         ckpt_dir.mkdir()
@@ -595,7 +619,7 @@ class TestShellQuotePaths:
 
     def test_shlex_quote_applied(self):
         import shlex
-        from multi_agent import driver
+
         # Simulate what spawn_cli_agent does internally
         task_file = "/Users/John Doe/project/.multi-agent/TASK.md"
         outbox_file = "/Users/John Doe/project/.multi-agent/outbox/builder.json"
@@ -639,6 +663,7 @@ class TestAtomicWriteOutbox:
     def test_concurrent_reads_get_complete_json(self, tmp_path, monkeypatch):
         """Write then immediately read — should never get partial data."""
         import json
+
         from multi_agent import workspace
         monkeypatch.setattr(workspace, "outbox_dir", lambda: tmp_path)
         monkeypatch.setattr(workspace, "ensure_workspace", lambda: None)
@@ -835,6 +860,7 @@ class TestGraphStatsCumulativeTotals:
 
     def test_warn_over_budget(self, caplog):
         import logging
+
         from multi_agent.graph import GraphStats
         gs = GraphStats()
         gs.record("build", 100, True)
@@ -846,6 +872,7 @@ class TestGraphStatsCumulativeTotals:
 
     def test_no_warn_under_budget(self, caplog):
         import logging
+
         from multi_agent.graph import GraphStats
         gs = GraphStats()
         gs.record("build", 100, True)
@@ -860,7 +887,9 @@ class TestWatcherContentHashDedup:
     """R19 F2: watcher deduplicates based on content hash, not just mtime."""
 
     def test_same_content_different_mtime_skipped(self, tmp_path, monkeypatch):
-        import json, os
+        import json
+        import os
+
         from multi_agent import watcher as _watcher_mod
         from multi_agent.watcher import OutboxPoller
         monkeypatch.setattr(_watcher_mod, "outbox_dir", lambda: tmp_path)
@@ -890,6 +919,7 @@ class TestWatcherContentHashDedup:
 
     def test_different_content_detected(self, tmp_path, monkeypatch):
         import json
+
         from multi_agent import watcher as _watcher_mod
         from multi_agent.watcher import OutboxPoller
         monkeypatch.setattr(_watcher_mod, "outbox_dir", lambda: tmp_path)
@@ -922,7 +952,7 @@ class TestDecomposePromptBraces:
     """R20 G1: decompose prompt doesn't crash when requirement contains braces."""
 
     def test_requirement_with_braces(self, tmp_path, monkeypatch):
-        from multi_agent import decompose, config
+        from multi_agent import config, decompose
         monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
         monkeypatch.setattr(config, "inbox_dir", lambda: tmp_path / "inbox")
         (tmp_path / "inbox").mkdir()
@@ -937,7 +967,7 @@ class TestDecomposePromptBraces:
         assert "implement endpoint" in content
 
     def test_requirement_with_curly_json(self, tmp_path, monkeypatch):
-        from multi_agent import decompose, config
+        from multi_agent import config, decompose
         monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
         monkeypatch.setattr(config, "inbox_dir", lambda: tmp_path / "inbox")
         (tmp_path / "inbox").mkdir()
@@ -954,7 +984,7 @@ class TestSnapshotPathSanitization:
     """R20 G2: save_state_snapshot sanitizes task_id to prevent path traversal."""
 
     def test_traversal_in_task_id(self, tmp_path, monkeypatch):
-        from multi_agent import graph, config
+        from multi_agent import config, graph
         monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
         state = {"task_id": "../../etc/passwd", "status": "test"}
         graph.save_state_snapshot("../../etc/passwd", "build", state)
@@ -966,7 +996,7 @@ class TestSnapshotPathSanitization:
         assert snaps[0].parent == snap_dir
 
     def test_normal_task_id_preserved(self, tmp_path, monkeypatch):
-        from multi_agent import graph, config
+        from multi_agent import config, graph
         monkeypatch.setattr(config, "workspace_dir", lambda: tmp_path)
         graph.save_state_snapshot("task-abc-123", "plan", {"x": 1})
         snap_dir = tmp_path / "snapshots"

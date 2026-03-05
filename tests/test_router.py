@@ -1,16 +1,22 @@
 """Tests for agent router."""
 
-import pytest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from multi_agent.router import (
-    load_agents, eligible_agents, pick_agent, pick_reviewer,
-    load_registry, get_defaults, get_strategy,
-    resolve_builder, resolve_reviewer,
+    eligible_agents,
+    get_defaults,
+    get_strategy,
+    load_agents,
+    load_registry,
+    pick_agent,
+    pick_reviewer,
+    resolve_builder,
+    resolve_reviewer,
 )
 from multi_agent.schema import AgentProfile, SkillContract
-
 
 PROFILES_PATH = Path(__file__).parent.parent / "agents" / "profiles.json"
 AGENTS_YAML_PATH = Path(__file__).parent.parent / "agents" / "agents.yaml"
@@ -182,9 +188,8 @@ class TestRouterEdgeCases:
     def test_single_agent_reviewer_raises(self):
         agents = [AgentProfile(id="solo", capabilities=["implementation", "review"])]
         contract = _make_contract()
-        with patch("multi_agent.router.get_defaults", return_value={}):
-            with pytest.raises(ValueError):
-                resolve_reviewer(agents, contract, builder_id="solo")
+        with patch("multi_agent.router.get_defaults", return_value={}), pytest.raises(ValueError):
+            resolve_reviewer(agents, contract, builder_id="solo")
 
     def test_three_agents_sorted_by_reliability(self):
         agents = [
@@ -271,8 +276,8 @@ class TestLoadAgentsWarning:
     """R13 F1: load_agents should log warning for malformed entries."""
 
     def test_malformed_entry_logs_warning(self, tmp_path, caplog):
+
         import yaml
-        import logging
         yaml_file = tmp_path / "agents.yaml"
         yaml_file.write_text(yaml.dump({
             "version": 2,

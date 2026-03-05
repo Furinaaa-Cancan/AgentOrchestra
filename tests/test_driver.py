@@ -1,10 +1,8 @@
 """Tests for agent driver — CLI spawn and file fallback."""
 
 import json
-import os
-import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -256,7 +254,6 @@ class TestConcurrencyProtection:
         """Thread should be removed from _active_agents after finishing."""
         outbox_d = tmp_path / "outbox"
         outbox_d.mkdir()
-        outbox_file = outbox_d / "builder.json"
 
         cmd = 'echo \'{{"status": "completed", "summary": "ok"}}\' > {outbox_file}'
 

@@ -1,7 +1,6 @@
 """Task 34: Tests for ma go command parameter combinations."""
 
-import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
@@ -92,7 +91,7 @@ class TestGoCommand:
              patch("multi_agent.cli._detect_active_task", return_value=None), \
              patch("multi_agent.cli.clear_runtime"), \
              patch("multi_agent.cli.acquire_lock"), \
-             patch("multi_agent.cli.save_task_yaml") as sty, \
+             patch("multi_agent.cli.save_task_yaml"), \
              patch("multi_agent.cli._show_waiting"), \
              patch("multi_agent.cli._run_watch_loop"):
             result = runner.invoke(main, [

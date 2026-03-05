@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from multi_agent.watcher import OutboxPoller, MAX_OUTBOX_SIZE
+from multi_agent.watcher import MAX_OUTBOX_SIZE, OutboxPoller
 
 
 @pytest.fixture
@@ -306,3 +306,121 @@ class TestOversizedWarningDedup:
             poller.check_once()  # should warn again
         oversized_warnings = [x for x in w if "exceeds" in str(x.message)]
         assert len(oversized_warnings) == 2
+
+
+# ── _wait_stable OSError paths (lines 53-54, 61-62) ─────
+
+
+class TestWaitStableOSError:
+    """Cover _wait_stable OSError branches."""
+
+    def test_initial_stat_oserror(self, tmp_path):
+        """OSError on first stat inside try block → returns False (lines 53-54)."""
+        path = tmp_path / "test.json"
+        path.write_text("{}")
+        call_count = [0]
+        real_stat = Path.stat
+
+        def selective_stat(self_path, **kwargs):
+            if self_path == path:
+                call_count[0] += 1
+                # First call is from exists(), let it pass
+                # Second call is stat() inside try → raise
+                if call_count[0] >= 2:
+                    raise OSError("disk error")
+            return real_stat(self_path, **kwargs)
+
+        with patch.object(Path, "stat", selective_stat):
+            result = OutboxPoller._wait_stable(path, settle_time=0.01, max_wait=0.05)
+        assert result is False
+
+    def test_second_stat_oserror(self, tmp_path):
+        """OSError on loop stat (during settle) → returns False (lines 61-62)."""
+        path = tmp_path / "test.json"
+        path.write_text("{}")
+        call_count = [0]
+        real_stat = Path.stat
+
+        def flaky_stat(self_path, **kwargs):
+            if self_path == path:
+                call_count[0] += 1
+                # calls 1 (exists) and 2 (first stat) pass; call 3 (loop stat) fails
+                if call_count[0] >= 3:
+                    raise OSError("gone")
+            return real_stat(self_path, **kwargs)
+
+        with patch.object(Path, "stat", flaky_stat):
+            result = OutboxPoller._wait_stable(path, settle_time=0.01, max_wait=0.1)
+        assert result is False
+
+
+# ── check_once OSError on stat (lines 76-77) ────────────
+
+
+class TestCheckOnceOSError:
+    """Cover check_once when stat fails between _scan and stat."""
+
+    def test_stat_oserror_skips_file(self, tmp_outbox):
+        """OSError between _scan and stat → file skipped (lines 76-77)."""
+        poller = OutboxPoller()
+        f = tmp_outbox / "builder.json"
+        f.write_text(json.dumps({"status": "ok", "summary": "s"}))
+        real_stat = Path.stat
+
+        def scan_ok_then_fail(self_path, **kwargs):
+            # Let _scan's exists()/iterdir work; fail only on the builder.json stat inside check_once
+            if self_path == f:
+                raise OSError("vanished")
+            return real_stat(self_path, **kwargs)
+
+        with patch.object(Path, "stat", scan_ok_then_fail):
+            results = poller.check_once()
+        assert results == []
+
+
+# ── check_once unstable file (line 92) ──────────────────
+
+
+class TestCheckOnceUnstable:
+    """Cover check_once when file is still changing."""
+
+    def test_unstable_file_skipped(self, tmp_outbox):
+        """File that _wait_stable returns False for → skipped (line 92)."""
+        poller = OutboxPoller()
+        (tmp_outbox / "builder.json").write_text(json.dumps({"status": "ok", "summary": "s"}))
+
+        with patch.object(OutboxPoller, "_wait_stable", return_value=False):
+            results = poller.check_once()
+        assert results == []
+
+
+# ── watch() idle backoff (lines 130-132, 140) ───────────
+
+
+class TestWatchIdleBackoff:
+    """Cover watch() idle count increment and interval backoff."""
+
+    @patch.object(OutboxPoller, "_wait_stable", return_value=True)
+    def test_idle_backoff_increases_interval(self, mock_stable, tmp_outbox):
+        """After 10+ idle polls, interval grows up to max_interval (lines 130-132)."""
+        poller = OutboxPoller(poll_interval=0.01, min_interval=0.01, max_interval=0.05)
+        max_intervals_seen = [0.0]
+        call_count = [0]
+        real_sleep = time.sleep  # capture before patching
+
+        def counting_sleep(secs):
+            max_intervals_seen[0] = max(max_intervals_seen[0], poller._current_interval)
+            call_count[0] += 1
+            if call_count[0] > 15:
+                (tmp_outbox / "builder.json").write_text(
+                    json.dumps({"status": "done", "summary": "ok"})
+                )
+            real_sleep(0.001)
+
+        collected = []
+        with patch("multi_agent.watcher.time.sleep", side_effect=counting_sleep):
+            poller.watch(callback=lambda r, d: collected.append(r), stop_after=1)
+
+        assert len(collected) == 1
+        # Interval should have grown during idle period before file appeared
+        assert max_intervals_seen[0] > 0.01

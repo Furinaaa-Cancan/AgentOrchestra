@@ -2,9 +2,7 @@
 
 import json
 import os
-import tempfile
 import time
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -436,7 +434,6 @@ class TestCleanupOldFiles:
     """Task 92: Auto cleanup old files tests."""
 
     def test_cleanup_removes_old(self, tmp_workspace):
-        import os
         workspace.ensure_workspace()
         # Create an old file in history
         old_file = tmp_workspace / "history" / "old-task.json"
@@ -454,11 +451,10 @@ class TestCleanupOldFiles:
         new_file = tmp_workspace / "history" / "new-task.json"
         new_file.write_text("[]")
 
-        deleted = workspace.cleanup_old_files(max_age_days=7)
+        workspace.cleanup_old_files(max_age_days=7)
         assert new_file.exists()
 
     def test_cleanup_preserves_active_task(self, tmp_workspace):
-        import os
         workspace.ensure_workspace()
         workspace.acquire_lock("active-task")
         old_file = tmp_workspace / "tasks" / "active-task.yaml"

@@ -1,30 +1,27 @@
 """Tests for the LangGraph 4-node workflow."""
 
 import json
-import tempfile
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from multi_agent.graph import (
-    WorkflowState,
+    MAX_CONVERSATION_SIZE,
+    MAX_TASK_DURATION_SEC,
+    EventHooks,
+    GraphStats,
+    _conn_pool,
+    _get_connection,
+    _is_cancelled,
+    _route_after_build,
     build_graph,
     build_node,
-    review_node,
     decide_node,
-    plan_node,
-    route_decision,
-    _route_after_build,
-    _is_cancelled,
-    _get_connection,
-    _conn_pool,
-    EventHooks,
     graph_hooks,
-    GraphStats,
+    plan_node,
+    review_node,
+    route_decision,
     trim_conversation,
-    MAX_TASK_DURATION_SEC,
-    MAX_CONVERSATION_SIZE,
 )
 
 
@@ -462,7 +459,6 @@ class TestIsCancelled:
 
     def test_cancelled_task(self, tmp_path):
         """Task with status=cancelled returns True."""
-        from multi_agent.graph import _is_cancelled
         import yaml
         tasks = tmp_path / "tasks"
         tasks.mkdir()
@@ -475,7 +471,6 @@ class TestIsCancelled:
 
     def test_active_task(self, tmp_path):
         """Task with status=active returns False."""
-        from multi_agent.graph import _is_cancelled
         import yaml
         tasks = tmp_path / "tasks"
         tasks.mkdir()
@@ -488,7 +483,6 @@ class TestIsCancelled:
 
     def test_no_task_file(self, tmp_path):
         """No task file returns False."""
-        from multi_agent.graph import _is_cancelled
         tasks = tmp_path / "tasks"
         tasks.mkdir()
         with patch("multi_agent.config.tasks_dir", return_value=tasks):
@@ -569,6 +563,7 @@ class TestBuildNodeTimeout:
     def test_build_started_at_prevents_false_timeout(self, mock_interrupt, mock_task_md, mock_dash):
         """build_started_at is recent → no timeout even if started_at is old."""
         import time as _time
+
         from multi_agent.graph import build_node
         mock_interrupt.return_value = {
             "status": "completed", "summary": "done",
@@ -642,6 +637,7 @@ class TestReviewNodeTimeout:
     def test_review_no_timeout_with_recent_review_started_at(self, mock_interrupt):
         """review_started_at is recent → no timeout."""
         import time as _time
+
         from multi_agent.graph import review_node
         mock_interrupt.return_value = {"decision": "approve", "feedback": "LGTM"}
         state = {
@@ -658,6 +654,7 @@ class TestReviewNodeTimeout:
     def test_review_node_returns_review_started_at(self, mock_interrupt):
         """review_node should return review_started_at."""
         import time as _time
+
         from multi_agent.graph import review_node
         mock_interrupt.return_value = {"decision": "approve", "feedback": "ok"}
         state = {
@@ -764,7 +761,7 @@ class TestEventHooks:
 
     def test_register_hook_public_api(self):
         """T13: register_hook maps event names to EventHooks correctly."""
-        from multi_agent.graph import register_hook, EventHooks
+        from multi_agent.graph import EventHooks, register_hook
         hooks = EventHooks()
         calls = []
         with patch("multi_agent.graph.graph_hooks", hooks):
@@ -907,7 +904,6 @@ class TestPlanNode:
         assert "Precondition" in result["error"]
 
     def test_conversation_has_timestamp(self):
-        import time as _time
         with patch("multi_agent.graph.load_contract", return_value=self._mock_contract()), \
              patch("multi_agent.graph.validate_preconditions", return_value=[]), \
              patch("multi_agent.graph.load_agents", return_value=[]), \
@@ -1022,7 +1018,6 @@ class TestBuildNodeComprehensive:
         return s
 
     def test_valid_output_proceeds(self):
-        import time as _time
         state = self._base_state()
         output = {"status": "completed", "summary": "Done", "changed_files": []}
         with patch("multi_agent.graph.interrupt", return_value=output), \
@@ -1079,7 +1074,6 @@ class TestBuildNodeComprehensive:
         assert "TIMEOUT" in result["error"]
 
     def test_quality_gate_warning(self):
-        import time as _time
         state = self._base_state()
         output = {"status": "completed", "summary": "Done", "check_results": {"lint": "failed"}}
         contract = MagicMock(quality_gates=["lint"], timeouts=MagicMock(run_sec=1800))
@@ -1278,7 +1272,7 @@ class TestTrimConversation:
         assert len(result) == 10
 
     def test_long_conversation_trimmed(self):
-        from multi_agent.graph import trim_conversation, MAX_CONVERSATION_SIZE
+        from multi_agent.graph import MAX_CONVERSATION_SIZE, trim_conversation
         convo = [{"role": "a", "t": i} for i in range(300)]
         result = trim_conversation(convo)
         assert len(result) <= MAX_CONVERSATION_SIZE + 1  # +1 for trimmed marker
@@ -1303,7 +1297,7 @@ class TestSaveStateSnapshot:
         assert len(files) == 1
 
     def test_snapshot_cleanup(self, tmp_path):
-        from multi_agent.graph import save_state_snapshot, MAX_SNAPSHOTS
+        from multi_agent.graph import MAX_SNAPSHOTS, save_state_snapshot
         with patch("multi_agent.config.workspace_dir", return_value=tmp_path):
             for i in range(MAX_SNAPSHOTS + 5):
                 save_state_snapshot("task-abc", f"node{i}", {"i": i})
@@ -1321,7 +1315,6 @@ class TestLogTiming:
             log_timing("task-t1", "plan", 1000.0, 1002.5)
         log_file = tmp_path / "logs" / "timing-task-t1.jsonl"
         assert log_file.exists()
-        import json
         line = json.loads(log_file.read_text().strip())
         assert line["node"] == "plan"
         assert line["duration_ms"] == 2500
@@ -1356,7 +1349,6 @@ class TestGraphStats:
         stats.record("build", 500, True)
         stats.save(path=tmp_path / "stats.json")
         assert (tmp_path / "stats.json").exists()
-        import json
         data = json.loads((tmp_path / "stats.json").read_text())
         assert "build" in data
 
@@ -1428,7 +1420,7 @@ class TestCompileGraphCaching:
             reset_graph()
 
 
-class TestGraphStats:
+class TestGraphStatsEdgeCases:
     """Edge case tests for GraphStats (R5-R7 additions)."""
 
     def test_record_token_usage_valid(self):
@@ -1514,7 +1506,7 @@ class TestTrimConversationEdgeCases:
         conv = [{"role": "user", "action": "retry", "feedback": 42, "t": i}
                 for i in range(MAX_CONVERSATION_SIZE + 5)]
         result = trim_conversation(conv)
-        marker = [e for e in result if e.get("action") == "trimmed"][0]
+        marker = next(e for e in result if e.get("action") == "trimmed")
         # Non-string feedback should be silently skipped
         assert marker["key_feedback"] == []
 
@@ -1523,7 +1515,7 @@ class TestTrimConversationEdgeCases:
         conv = [{"role": "user", "action": "retry", "feedback": f"fb-{i}", "t": i}
                 for i in range(MAX_CONVERSATION_SIZE + 20)]
         result = trim_conversation(conv)
-        marker = [e for e in result if e.get("action") == "trimmed"][0]
+        marker = next(e for e in result if e.get("action") == "trimmed")
         # All retry feedback from removed entries should be kept
         assert len(marker["key_feedback"]) > 3
 
@@ -1532,7 +1524,7 @@ class TestTrimConversationEdgeCases:
         conv = [{"role": "user", "action": "assigned", "feedback": f"fb-{i}", "t": i}
                 for i in range(MAX_CONVERSATION_SIZE + 10)]
         result = trim_conversation(conv)
-        marker = [e for e in result if e.get("action") == "trimmed"][0]
+        marker = next(e for e in result if e.get("action") == "trimmed")
         assert marker["key_feedback"] == []
 
 
@@ -1774,7 +1766,7 @@ class TestInterAgentSanitization:
     (Agents Under Siege, UNC 2025)."""
 
     def test_long_summary_truncated(self):
-        from multi_agent.prompt import _sanitize_builder_output, MAX_BUILDER_SUMMARY_CHARS
+        from multi_agent.prompt import MAX_BUILDER_SUMMARY_CHARS, _sanitize_builder_output
         output = {"summary": "x" * 5000, "status": "done"}
         sanitized = _sanitize_builder_output(output)
         assert len(sanitized["summary"]) <= MAX_BUILDER_SUMMARY_CHARS + len(" [TRUNCATED]")

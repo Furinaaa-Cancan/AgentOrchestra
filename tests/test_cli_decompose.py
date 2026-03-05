@@ -1,14 +1,13 @@
 """Integration tests for CLI decompose flow."""
 
-import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
 
 from multi_agent.cli import main
-from multi_agent.schema import SubTask, DecomposeResult
+from multi_agent.schema import SubTask
 
 
 @pytest.fixture
@@ -106,7 +105,7 @@ class TestGoDecomposeFlag:
         mock_compile.return_value = mock_app
 
         runner = CliRunner()
-        result = runner.invoke(main, [
+        runner.invoke(main, [
             "go", "implement auth", "--decompose", "--task-id", "task-test-dec",
         ])
         mock_decomposed.assert_called_once()
@@ -121,7 +120,7 @@ class TestGoDecomposeFlag:
         mock_compile.return_value = mock_app
 
         runner = CliRunner()
-        result = runner.invoke(main, [
+        runner.invoke(main, [
             "go", "fix bug", "--task-id", "task-test-single",
         ])
         mock_single.assert_called_once()
@@ -229,6 +228,7 @@ class TestUserChoiceOnFailure:
         """The choice set should include 'retry' alongside skip and abort."""
         # Verify the _handle_failure method has all three choices
         import inspect
+
         from multi_agent.cli_decompose import _DecomposeExecContext
         src = inspect.getsource(_DecomposeExecContext._handle_failure)
         assert '"skip", "retry", "abort"' in src or "'skip', 'retry', 'abort'" in src
@@ -236,6 +236,7 @@ class TestUserChoiceOnFailure:
     def test_auto_confirm_skips_choice(self):
         """When auto_confirm=True, failed sub-tasks should be auto-skipped (no prompt)."""
         import inspect
+
         from multi_agent.cli_decompose import _DecomposeExecContext
         src = inspect.getsource(_DecomposeExecContext._handle_failure)
         assert "auto_confirm" in src

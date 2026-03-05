@@ -1,10 +1,11 @@
 """Tests for skill contract loader."""
 
-import pytest
 from pathlib import Path
 
-from multi_agent.contract import load_contract, list_skills, validate_preconditions
+import pytest
+import yaml
 
+from multi_agent.contract import list_skills, load_contract, validate_preconditions
 
 SKILLS_DIR = Path(__file__).parent.parent / "skills"
 
@@ -58,7 +59,7 @@ class TestContractBoundary:
         skill_dir = tmp_path / "bad-skill"
         skill_dir.mkdir()
         (skill_dir / "contract.yaml").write_text(":::\nbad: [yaml")
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, yaml.YAMLError)):
             load_contract("bad-skill", base=tmp_path)
 
     def test_list_skills_empty_dir(self, tmp_path):
