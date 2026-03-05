@@ -800,6 +800,11 @@ from multi_agent.cli_admin import register_admin_commands  # noqa: E402
 
 register_admin_commands(main)
 
+# ── Queue runner commands (cli_queue.py) ─────────────────
+from multi_agent.cli_queue import register_queue_commands  # noqa: E402
+
+register_queue_commands(main)
+
 
 if __name__ == "__main__":
     main()
