@@ -156,13 +156,9 @@ def spawn_cli_agent(
         shell injection risk. The command_template comes from agents.yaml.
         Ensure agents.yaml has proper file permissions (0o644 or stricter).
     """
-    # Task 10: concurrency protection
+    # Task 10: concurrency protection — single lock scope to eliminate
+    # check-then-act race between duplicate detection and thread registration.
     lock_key = f"{agent_id}:{role}"
-    with _cli_lock:
-        existing = _active_agents.get(lock_key)
-        if existing and existing.is_alive():
-            logger.info("CLI agent %s already running as %s, returning existing thread", agent_id, role)
-            return existing
 
     task_file = str(workspace_dir() / "TASK.md")
     outbox_file = str(outbox_dir() / f"{role}.json")
@@ -230,10 +226,14 @@ def spawn_cli_agent(
             with _cli_lock:
                 _active_agents.pop(lock_key, None)
 
-    t = threading.Thread(target=_run, daemon=True, name=f"cli-{agent_id}-{role}")
     with _cli_lock:
+        existing = _active_agents.get(lock_key)
+        if existing and existing.is_alive():
+            logger.info("CLI agent %s already running as %s, returning existing thread", agent_id, role)
+            return existing
+        t = threading.Thread(target=_run, daemon=True, name=f"cli-{agent_id}-{role}")
         _active_agents[lock_key] = t
-    t.start()
+        t.start()
     return t
 
 

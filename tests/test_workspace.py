@@ -616,3 +616,60 @@ class TestCleanupOSError:
         with patch.object(Path, "unlink", side_effect=OSError("locked")):
             deleted = workspace.cleanup_old_files(max_age_days=7)
         assert deleted == 0
+
+
+class TestArchiveConversationAtomic:
+    """Regression: archive_conversation must use atomic write (tempfile+replace)."""
+
+    def test_atomic_write_no_partial(self, tmp_workspace):
+        workspace.ensure_workspace()
+        convo = [{"role": "builder", "t": 1.0}]
+        path = workspace.archive_conversation("task-arch-1", convo)
+        assert path.exists()
+        import json
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert data == convo
+
+    def test_atomic_no_leftover_tmp(self, tmp_workspace):
+        workspace.ensure_workspace()
+        workspace.archive_conversation("task-arch-2", [{"role": "reviewer"}])
+        history = tmp_workspace / "history"
+        tmp_files = list(history.glob("*.tmp"))
+        assert tmp_files == []
+
+    def test_atomic_overwrite(self, tmp_workspace):
+        workspace.ensure_workspace()
+        workspace.archive_conversation("task-arch-3", [{"v": 1}])
+        workspace.archive_conversation("task-arch-3", [{"v": 2}])
+        import json
+        path = tmp_workspace / "history" / "task-arch-3.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert data == [{"v": 2}]
+
+
+class TestClearOutboxInboxNoTOCTOU:
+    """Regression: clear_outbox/clear_inbox must not raise on concurrent delete."""
+
+    def test_clear_outbox_missing_file_no_error(self, tmp_workspace):
+        workspace.ensure_workspace()
+        workspace.clear_outbox("builder")  # file doesn't exist — must not raise
+
+    def test_clear_inbox_missing_file_no_error(self, tmp_workspace):
+        workspace.ensure_workspace()
+        workspace.clear_inbox("reviewer")  # file doesn't exist — must not raise
+
+
+class TestReadLockNoTOCTOU:
+    """Regression: read_lock must handle concurrent deletion gracefully."""
+
+    def test_read_lock_deleted_between_calls(self, tmp_workspace):
+        # read_lock should return None if file vanishes
+        result = workspace.read_lock()
+        assert result is None
+
+    def test_read_lock_empty_file_returns_none(self, tmp_workspace):
+        workspace.ensure_workspace()
+        lock_path = tmp_workspace / ".lock"
+        lock_path.write_text("")
+        result = workspace.read_lock()
+        assert result is None

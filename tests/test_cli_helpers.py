@@ -436,3 +436,31 @@ class TestSessionPullCmd:
             ])
         assert result.exit_code == 0
         assert "Hello builder prompt" in result.output
+
+
+class TestGoCommandLockRelease:
+    """Regression: P1 — go command must release lock on unexpected errors."""
+
+    def test_lock_released_on_unexpected_error(self, tmp_path, monkeypatch):
+        """If _run_single_task raises an unexpected error, lock must be released."""
+        from click.testing import CliRunner
+        from multi_agent import workspace
+
+        monkeypatch.setattr("multi_agent.config.workspace_dir", lambda: tmp_path)
+        monkeypatch.setattr("multi_agent.config.inbox_dir", lambda: tmp_path / "inbox")
+        monkeypatch.setattr("multi_agent.config.outbox_dir", lambda: tmp_path / "outbox")
+        monkeypatch.setattr("multi_agent.config.tasks_dir", lambda: tmp_path / "tasks")
+        monkeypatch.setattr("multi_agent.config.history_dir", lambda: tmp_path / "history")
+        workspace.ensure_workspace()
+
+        runner = CliRunner()
+        with patch("multi_agent.cli._ensure_no_active_task"), \
+             patch("multi_agent.cli._generate_task_id", return_value="task-locktest"), \
+             patch("multi_agent.cli.clear_runtime"), \
+             patch("multi_agent.graph.compile_graph"), \
+             patch("multi_agent.cli._run_single_task", side_effect=RuntimeError("boom")):
+            result = runner.invoke(main, ["go", "test requirement"])
+
+        # Lock must be released after unexpected error
+        assert workspace.read_lock() is None
+        assert result.exit_code != 0

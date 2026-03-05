@@ -407,16 +407,23 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
     # Acquire lock — marks this task as the sole active task
     acquire_lock(task_id)
 
-    if decompose or decompose_file:
-        from multi_agent.cli_decompose import _run_decomposed
-        _run_decomposed(app, task_id, requirement, skill, builder, reviewer,
-                        retry_budget, timeout, no_watch, mode, review_policy,
-                        auto_confirm=auto_confirm, decompose_file=decompose_file,
-                        no_cache=no_cache)
-        return
+    try:
+        if decompose or decompose_file:
+            from multi_agent.cli_decompose import _run_decomposed
+            _run_decomposed(app, task_id, requirement, skill, builder, reviewer,
+                            retry_budget, timeout, no_watch, mode, review_policy,
+                            auto_confirm=auto_confirm, decompose_file=decompose_file,
+                            no_cache=no_cache)
+            return
 
-    _run_single_task(app, task_id, requirement, skill, builder, reviewer,
-                     retry_budget, timeout, no_watch, mode, review_policy)
+        _run_single_task(app, task_id, requirement, skill, builder, reviewer,
+                         retry_budget, timeout, no_watch, mode, review_policy)
+    except (SystemExit, KeyboardInterrupt):
+        raise  # don't release lock on intentional exit or Ctrl-C (task still active)
+    except Exception:
+        # Release lock on unexpected errors to prevent permanent lock leak
+        release_lock()
+        raise
 
 
 def _run_single_task(app: Any, task_id: str, requirement: str, skill: str, builder: str, reviewer: str,

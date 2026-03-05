@@ -160,16 +160,14 @@ def clear_outbox(agent_id: str) -> None:
     """Remove outbox file for an agent (before a new cycle)."""
     _validate_agent_id(agent_id)
     path = outbox_dir() / f"{agent_id}.json"
-    if path.exists():
-        path.unlink()
+    path.unlink(missing_ok=True)
 
 
 def clear_inbox(agent_id: str) -> None:
     """Remove inbox file for an agent."""
     _validate_agent_id(agent_id)
     path = inbox_dir() / f"{agent_id}.md"
-    if path.exists():
-        path.unlink()
+    path.unlink(missing_ok=True)
 
 
 @retry_file_op()
@@ -200,10 +198,11 @@ def _lock_path() -> Path:
 def read_lock() -> str | None:
     """Read the active task_id from lock file. Returns None if no lock."""
     p = _lock_path()
-    if not p.exists():
+    try:
+        text = p.read_text(encoding="utf-8").strip()
+        return text or None
+    except FileNotFoundError:
         return None
-    text = p.read_text(encoding="utf-8").strip()
-    return text or None
 
 
 def acquire_lock(task_id: str) -> None:
@@ -287,13 +286,11 @@ def check_workspace_health() -> list[str]:
             issues.append(f"store.db is not writable: {db}")
 
     # Check orphan lock
-    lock = ws / ".lock"
-    if lock.exists():
-        lock_content = lock.read_text(encoding="utf-8").strip()
-        if lock_content:
-            task_file = tasks_dir() / f"{lock_content}.yaml"
-            if not task_file.exists():
-                issues.append(f"Orphan lock: task '{lock_content}' has no YAML file")
+    lock_content = read_lock()
+    if lock_content:
+        task_file = tasks_dir() / f"{lock_content}.yaml"
+        if not task_file.exists():
+            issues.append(f"Orphan lock: task '{lock_content}' has no YAML file")
 
     # Check oversized files
     issues.extend(_find_oversized_files(ws))
@@ -389,10 +386,17 @@ def cleanup_old_files(max_age_days: int = 7) -> int:
 
 @retry_file_op()
 def archive_conversation(task_id: str, conversation: list[dict[str, Any]]) -> Path:
-    """Archive conversation history to history/{task_id}.json."""
+    """Archive conversation history to history/{task_id}.json (atomic write)."""
     ensure_workspace()
     path = history_dir() / f"{task_id}.json"
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(conversation, f, ensure_ascii=False, indent=2)
-        f.write("\n")
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp", prefix=f".{task_id}-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(conversation, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        Path(tmp).replace(path)  # atomic on POSIX
+    except BaseException:
+        with contextlib.suppress(OSError):
+            Path(tmp).unlink()
+        raise
     return path
