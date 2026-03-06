@@ -452,6 +452,7 @@ class TestGoCommandLockRelease:
         monkeypatch.setattr("multi_agent.config.outbox_dir", lambda: tmp_path / "outbox")
         monkeypatch.setattr("multi_agent.config.tasks_dir", lambda: tmp_path / "tasks")
         monkeypatch.setattr("multi_agent.config.history_dir", lambda: tmp_path / "history")
+        monkeypatch.setattr("multi_agent.workspace.workspace_dir", lambda: tmp_path)
         workspace.ensure_workspace()
 
         runner = CliRunner()
