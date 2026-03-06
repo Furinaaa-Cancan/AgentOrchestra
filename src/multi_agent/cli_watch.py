@@ -10,6 +10,7 @@ These are re-exported from cli.py to preserve existing mock paths.
 
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any
 
@@ -27,6 +28,9 @@ from multi_agent.workspace import (
     save_task_yaml,
     validate_outbox_data,
 )
+
+# Serializes resume_task + sync so parallel subtasks don't corrupt global TASK.md/outbox
+_resume_lock = threading.Lock()
 
 
 def _sync_subtask_workspace(subtask_id: str) -> None:
@@ -167,7 +171,10 @@ def _process_outbox(poller: Any, role: str, agent: str, status: Any, app: Any, t
                 for ve in v_errors:
                     click.echo(f"             - {ve}", err=True)
             try:
-                next_status = resume_task(app, task_id, data)
+                with _resume_lock:
+                    next_status = resume_task(app, task_id, data)
+                    if subtask_id:
+                        _sync_subtask_workspace(subtask_id)
             except Exception as e:
                 if manage_lock:
                     release_lock()
@@ -175,10 +182,6 @@ def _process_outbox(poller: Any, role: str, agent: str, status: Any, app: Any, t
                 click.echo(f"[{ts}] ❌ Error: {e}", err=True)
                 save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
                 return "return"
-
-            # Sync updated TASK.md to subtask workspace for next iteration
-            if subtask_id:
-                _sync_subtask_workspace(subtask_id)
 
             if not next_status.is_terminal and next_status.waiting_role:
                 _show_next_agent(next_status, ts, visible=visible, subtask_id=subtask_id)
