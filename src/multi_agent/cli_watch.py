@@ -29,6 +29,19 @@ from multi_agent.workspace import (
 )
 
 
+def _sync_subtask_workspace(subtask_id: str) -> None:
+    """Sync global TASK.md + outbox paths into subtask workspace after graph advances."""
+    import shutil
+
+    from multi_agent.config import subtask_outbox_dir, subtask_task_file, workspace_dir
+
+    global_task = workspace_dir() / "TASK.md"
+    sub_task = subtask_task_file(subtask_id)
+    if global_task.exists():
+        shutil.copy2(str(global_task), str(sub_task))
+    subtask_outbox_dir(subtask_id).mkdir(parents=True, exist_ok=True)
+
+
 def _normalize_resume_output(role: str, data: dict[str, Any], state_values: dict[str, Any]) -> dict[str, Any]:
     """Normalize/validate resume payload for legacy go/watch/done path."""
     if role != "reviewer":
@@ -117,7 +130,7 @@ def _handle_terminal(
         click.echo(f"[{ts}] ❌ Task finished. Status: {final}{' — ' + error if error else ''}")
 
 
-def _show_next_agent(next_status: Any, ts: str, *, visible: bool = False) -> None:
+def _show_next_agent(next_status: Any, ts: str, *, visible: bool = False, subtask_id: str | None = None) -> None:
     """Show next waiting state: retry feedback + auto-spawn or manual instructions."""
     next_role = next_status.waiting_role
     next_agent = next_status.waiting_agent or "?"
@@ -130,11 +143,11 @@ def _show_next_agent(next_status: Any, ts: str, *, visible: bool = False) -> Non
         if feedback:
             click.echo(f"             {feedback}")
     from multi_agent.driver import dispatch_agent
-    result = dispatch_agent(next_agent, next_role, timeout_sec=next_status.values.get("timeout_sec", 600), visible=visible)
+    result = dispatch_agent(next_agent, next_role, timeout_sec=next_status.values.get("timeout_sec", 600), visible=visible, subtask_id=subtask_id)
     click.echo(f"[{ts}] {result.message}")
 
 
-def _process_outbox(poller: Any, role: str, agent: str, status: Any, app: Any, task_id: str, ts: str, manage_lock: bool, *, visible: bool = False) -> str:
+def _process_outbox(poller: Any, role: str, agent: str, status: Any, app: Any, task_id: str, ts: str, manage_lock: bool, *, visible: bool = False, subtask_id: str | None = None) -> str:
     """Check outbox for matching role output, validate, and resume. Returns 'return' to stop loop."""
     from multi_agent.orchestrator import resume_task
 
@@ -163,8 +176,12 @@ def _process_outbox(poller: Any, role: str, agent: str, status: Any, app: Any, t
                 save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
                 return "return"
 
+            # Sync updated TASK.md to subtask workspace for next iteration
+            if subtask_id:
+                _sync_subtask_workspace(subtask_id)
+
             if not next_status.is_terminal and next_status.waiting_role:
-                _show_next_agent(next_status, ts, visible=visible)
+                _show_next_agent(next_status, ts, visible=visible, subtask_id=subtask_id)
             break
     return "continue"
 
@@ -205,7 +222,7 @@ def _run_watch_loop(app: Any, config: dict[str, Any], task_id: str, interval: fl
             role = status.waiting_role or "builder"
             agent = status.waiting_agent or "?"
 
-            result = _process_outbox(poller, role, agent, status, app, task_id, ts, manage_lock, visible=visible)
+            result = _process_outbox(poller, role, agent, status, app, task_id, ts, manage_lock, visible=visible, subtask_id=subtask_id)
             if result == "return":
                 return
 
