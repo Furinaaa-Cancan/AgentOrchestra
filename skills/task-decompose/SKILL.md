@@ -5,7 +5,7 @@ description: Decompose incoming requirements into dependency-aware tasks with do
 
 Parse the user requirement into a directed acyclic graph of executable tasks.
 
-Generate task objects that conform to `/Volumes/Seagate/Multi-Agent/specs/task.schema.json`.
+Generate task objects that conform to `specs/task.schema.json`.
 
 Emit strict outputs for each task:
 - `task_id`

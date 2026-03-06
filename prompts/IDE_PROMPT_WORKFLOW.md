@@ -5,18 +5,18 @@
 ## Step 1: Start
 
 ```bash
-PYTHONPATH=/Volumes/Seagate/Multi-Agent/src \
+PYTHONPATH=src \
 python3 -m multi_agent.cli session start \
-  --task /Volumes/Seagate/Multi-Agent/tasks/examples/task-code-implement.json \
+  --task tasks/examples/task-code-implement.json \
   --mode strict
 ```
 
 该命令会：
 - 初始化/刷新 session（LangGraph SSOT）
 - 自动生成三端提示词：
-  - `/Volumes/Seagate/Multi-Agent/prompts/current-windsurf.txt`
-  - `/Volumes/Seagate/Multi-Agent/prompts/current-antigravity.txt`
-  - `/Volumes/Seagate/Multi-Agent/prompts/current-codex.txt`
+  - `prompts/current-windsurf.txt`
+  - `prompts/current-antigravity.txt`
+  - `prompts/current-codex.txt`
 - 指出当前 owner（谁该执行）
 
 ## Step 2: 给 owner IDE 粘贴提示词
@@ -26,11 +26,11 @@ python3 -m multi_agent.cli session start \
 ## Step 3: 提交 IDE 返回结果
 
 ```bash
-PYTHONPATH=/Volumes/Seagate/Multi-Agent/src \
+PYTHONPATH=src \
 python3 -m multi_agent.cli session push \
   --task-id task-api-user-create \
   --agent windsurf \
-  --file /Volumes/Seagate/Multi-Agent/.multi-agent/outbox/builder.json
+  --file .multi-agent/outbox/builder.json
 ```
 
 说明：
@@ -40,7 +40,7 @@ python3 -m multi_agent.cli session push \
 ## Step 4: 查看当前状态（可选）
 
 ```bash
-PYTHONPATH=/Volumes/Seagate/Multi-Agent/src \
+PYTHONPATH=src \
 python3 -m multi_agent.cli session status \
   --task-id task-api-user-create
 ```

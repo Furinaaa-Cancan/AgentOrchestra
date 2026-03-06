@@ -36,7 +36,7 @@ cat > runtime/demo-builder.json <<'JSON'
   "result": {
     "status": "completed",
     "summary": "demo builder output",
-    "changed_files": ["/Volumes/Seagate/Multi-Agent/artifacts/task-api-user-create/app/main.py"],
+    "changed_files": ["artifacts/task-api-user-create/app/main.py"],
     "check_results": {
       "lint": "pass",
       "unit_test": "pass",
