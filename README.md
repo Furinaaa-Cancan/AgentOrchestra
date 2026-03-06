@@ -484,6 +484,23 @@ python3 -m ruff check src/  # Lint
 
 ---
 
+## 平台兼容性
+
+| 功能 | macOS | Windows | Linux |
+|------|-------|---------|-------|
+| file 模式（纯手动 IDE 协作） | ✅ | ✅ | ✅ |
+| CLI 自动模式（`--builder codex`） | ✅ | ⚠️ 需 WSL/Git Bash | ✅ |
+| `--visible`（终端窗口可视化） | ✅ | ❌ 待适配 | ❌ 待适配 |
+| GUI 驱动（AppleScript 自动化） | ✅ | ❌ 不适用 | ❌ 不适用 |
+| 图引擎 / 状态管理 / 并行分解 | ✅ | ✅ | ✅ |
+
+当前 `--visible` 模式依赖 macOS Terminal.app + AppleScript 打开终端窗口。Windows/Linux 适配已列入计划：
+- Windows：`start cmd /k` 或 Windows Terminal (`wt.exe`)
+- Linux：`gnome-terminal` / `xterm`
+- 核心逻辑（LangGraph 图引擎、workspace 原子写入、并行编排）完全跨平台，无需修改
+
+---
+
 ## License
 
 AGPL-3.0，详见 `LICENSE`。
@@ -502,4 +519,5 @@ Recommended: **1 IDE + N CLI agents** — one IDE orchestrates, multiple Codex/C
 - Task decomposition with dependency-aware topological execution
 - Rubber-stamp detection, retry budgets, timeout guards
 - Atomic file writes, TOCTOU race protection, input validation
+- **Platform**: macOS fully supported; Windows/Linux file+CLI modes work, `--visible` mode macOS-only (Windows Terminal adaptation planned)
 - 1137 tests, full mypy/ruff compliance

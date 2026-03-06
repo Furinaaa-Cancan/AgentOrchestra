@@ -665,21 +665,25 @@ def _decide_approve(state: WorkflowState, rubber_stamp: bool) -> dict[str, Any]:
 
 def _decide_request_changes(
     state: WorkflowState, reviewer_output: dict[str, Any],
+    *, original_convo: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Handle request_changes decision in decide_node."""
     feedback = reviewer_output.get("feedback", "")
     retry_count = state.get("retry_count", 0)
     budget = state.get("retry_budget", 2)
 
+    # Count from original (pre-trim) conversation to avoid undercounting
+    # when trim_conversation removes middle entries.
+    convo_for_count = original_convo if original_convo is not None else state.get("conversation", [])
     rc_count = sum(
-        1 for e in state.get("conversation", [])
+        1 for e in convo_for_count
         if e.get("action") == "request_changes"
     )
     if rc_count >= MAX_REQUEST_CHANGES:
         _log.warning("request_changes cap reached (%d), escalating", rc_count)
         final_entry = {"role": "orchestrator", "action": "escalated",
                        "reason": f"request_changes cap ({rc_count})", "t": time.time()}
-        full_convo = [*state.get("conversation", []), final_entry]
+        full_convo = [*convo_for_count, final_entry]
         archive_conversation(state["task_id"], full_convo)
         return {"error": "REQUEST_CHANGES_CAP", "final_status": "escalated",
                 "conversation": [final_entry]}
@@ -853,7 +857,7 @@ def decide_node(state: WorkflowState) -> dict[str, Any]:
     if decision == "approve":
         result = _decide_approve(state, rubber_stamp)
     elif decision == "request_changes":
-        result = _decide_request_changes(state, reviewer_output)
+        result = _decide_request_changes(state, reviewer_output, original_convo=original_convo)
     else:
         result = _decide_reject_retry(state, reviewer_output)
 
