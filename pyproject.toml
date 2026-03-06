@@ -8,8 +8,9 @@ version = "0.6.1"
 description = "MyGO — Multi-agent Yielding Group Orchestra. A band of AI agents orchestrated to build, review, and ship code together."
 requires-python = ">=3.11"
 dependencies = [
-    "langgraph>=0.4,<1",
-    "langgraph-checkpoint-sqlite>=2,<3",
+    "langgraph>=1.0,<2",
+    "langgraph-checkpoint>=4.0,<5",
+    "langgraph-checkpoint-sqlite>=3.0.1,<4",
     "pydantic>=2.5,<3",
     "pyyaml>=6,<7",
     "jinja2>=3.1,<4",
