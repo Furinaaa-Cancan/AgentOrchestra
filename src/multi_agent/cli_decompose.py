@@ -415,13 +415,14 @@ class _DecomposeExecContext:
         self.save_ckpt(self.parent_task_id, prior_results, list(completed_ids))
 
         # Don't close slot-based terminals between groups — they persist for reuse.
-        # Only clean up subtask workspaces.
-
-        # Cleanup subtask workspaces
-        from multi_agent.config import subtask_workspace
-        for _st, subtask_id, _, _, _ in prepared:
-            with contextlib.suppress(OSError):
-                shutil.rmtree(str(subtask_workspace(subtask_id)), ignore_errors=True)
+        # When visible, skip workspace cleanup here — wrapper scripts in the
+        # terminal windows may still be accessing outbox paths.  Cleanup is
+        # deferred to after close_all_visible_terminals() at decompose end.
+        if not self.visible:
+            from multi_agent.config import subtask_workspace
+            for _st, subtask_id, _, _, _ in prepared:
+                with contextlib.suppress(OSError):
+                    shutil.rmtree(str(subtask_workspace(subtask_id)), ignore_errors=True)
 
     def _handle_failure(
         self, st: Any, sub_start: float,
@@ -729,7 +730,16 @@ def _run_decomposed(
         from multi_agent.driver import close_all_visible_terminals
         close_all_visible_terminals()
         import time as _time
-        _time.sleep(1)  # give wrapper scripts time to see .done and exit
+        _time.sleep(2)  # give wrapper scripts time to see .done and exit
+
+        # Deferred cleanup: now that terminals have exited, safe to remove
+        # subtask workspaces that were kept alive for the wrapper scripts.
+        from multi_agent.config import subtask_workspace
+        for group in groups:
+            for st in group:
+                sid = f"{parent_task_id}-{st.id}"
+                with contextlib.suppress(OSError):
+                    shutil.rmtree(str(subtask_workspace(sid)), ignore_errors=True)
 
     # Phase 4: Aggregate & report
     _finalize_decompose(

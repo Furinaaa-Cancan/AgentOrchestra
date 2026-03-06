@@ -398,6 +398,7 @@ def dispatch_visible(
         "outbox = os.environ.get('OUTBOX', '')",
         "tmplog = os.environ.get('TMPLOG', '')",
         "exit_code = int(os.environ.get('EXIT_CODE', '1'))",
+        "if outbox: os.makedirs(os.path.dirname(outbox), exist_ok=True)",
         "text = ''",
         "try: text = open(tmplog).read()",
         "except (OSError, IOError): pass",
