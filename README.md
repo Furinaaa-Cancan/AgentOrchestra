@@ -2,18 +2,72 @@
 
 **你的 AI 乐队，一条命令开演。**
 
-每个 AI IDE 是一位乐手，各司其職，合在一起演奏出完整的代码交付：
+基于 **LangGraph 单一状态源（SSOT）** 驱动 4 节点工作流。v0.7.1
 
-| 乐手 | パート | 干什么 |
-|------|--------|--------|
-| Windsurf | 高松燈 · Vo. (Builder) | 写代码、实现功能 |
-| Codex CLI | 千早愛音 · Gt. (Builder/Reviewer) | CLI 全自动并行执行 |
-| Cursor | 長崎そよ · Ba. (候补) | Builder 或 Reviewer 均可 |
-| Claude / Aider | 要楽奈 · Gt. (Auto) | CLI 全自动执行 |
-| Antigravity | 椎名立希花 · Dr. (Reviewer) | 独立审查、质量把关 |
+---
 
-基于 **LangGraph 单一状态源（SSOT）** 驱动 4 节点工作流，  
-支持全自动 CLI、GUI 自动化和手动 IDE 三种运行模式。v0.7.0
+## 推荐架构：1 IDE + N CLI
+
+**当前最佳实践是「一个 IDE 坐镇 + 多个 CLI agent 并行」**，而非多个 IDE 同时协作。
+
+```
+┌─────────────────────────────────────────────────┐
+│  你 (开发者)                                     │
+│  └─ Windsurf / Cursor (IDE)  ← 你在这里工作      │
+│       └─ my go "..." --decompose --visible       │
+│            ├─ Codex CLI × 4  (并行 builder)      │
+│            ├─ Codex CLI × 4  (并行 reviewer)     │
+│            └─ 全自动: build → review → decide    │
+└─────────────────────────────────────────────────┘
+```
+
+### 为什么不推荐多 IDE 协作？
+
+| 问题 | 说明 |
+|------|------|
+| **文件冲突** | 多个 IDE 同时编辑同一文件会互相覆盖，没有 git merge 级别的冲突解决 |
+| **状态竞争** | 多个 IDE 各自维护独立的 AI 上下文，无法共享编辑历史和意图 |
+| **Prompt 投递** | `driver: file` 模式需要用户手动告诉每个 IDE 去读 TASK.md，无法自动化 |
+| **无法并行** | IDE 模式下一次只能等一个 agent 完成，无法真正并行 |
+
+CLI agent（Codex、Claude CLI、Aider）天然支持自动化和并行，是多 agent 协作的正确选择。
+
+### 乐手阵容
+
+| 乐手 | パート | 驱动 | 角色 |
+|------|--------|------|------|
+| **Windsurf / Cursor** | 高松燈 · Vo. | `file` (手动) | 你的主 IDE，负责发起任务和最终决策 |
+| **Codex CLI** | 千早愛音 · Gt. | `cli` (自动) | ⭐ 推荐，支持并行 builder + reviewer |
+| **Claude CLI** | 長崎そよ · Ba. | `cli` (自动) | 全自动 builder/reviewer |
+| **Aider** | 要楽奈 · Gt. | `cli` (自动) | 轻量 CLI agent |
+| **Antigravity** | 椎名立希花 · Dr. | `file` (手动) | 独立 IDE reviewer（需手动操作） |
+
+### 典型用法
+
+```bash
+# ⭐ 推荐：1 个 IDE 发起，4 个 Codex CLI 并行干活
+my go "实现贪吃蛇游戏" --decompose --visible --builder codex --reviewer codex
+
+# 也可以：IDE 做 builder，CLI 做 reviewer
+my go "实现用户登录" --builder windsurf --reviewer codex
+
+# 也可以：纯 CLI 全自动（不需要 IDE）
+my go "修复 bug" --builder claude --reviewer codex
+```
+
+### 多 IDE 协作（实验性）
+
+如果你确实想让两个 IDE 协作（如 Windsurf 写代码、Cursor 审查），可以使用 Session 模式手动编排：
+
+```bash
+my session start --task task.json --mode strict
+my session pull --agent windsurf     # Windsurf 写代码
+my session push --agent windsurf --file builder.json
+my session pull --agent cursor       # Cursor 审查
+my session push --agent cursor --file reviewer.json
+```
+
+但这需要你在两个 IDE 之间手动切换，效率远不如 1 IDE + N CLI 的全自动流程。
 
 ---
 
@@ -46,51 +100,29 @@ my go "实现用户登录功能"
 
 ---
 
-## 两种运行模式
+## 命令速查
 
-### 模式 A：自动化流程（推荐）
-
-```bash
-# 单任务：一条命令完成 build → review → decide
-my go "实现 REST API 用户注册接口"
-
-# 复杂任务：自动分解为子任务并依次执行
-my go "实现完整用户认证模块" --decompose
-
-# 自定义角色
-my go "修复登录 bug" --builder windsurf --reviewer cursor --mode strict
-```
-
-关键命令：
+### 核心命令（自动化流程）
 
 | 命令 | 作用 |
 |---|---|
 | `my go "<需求>"` | 启动任务（自动 watch） |
+| `my go "..." --decompose --visible` | 分解为子任务 + 可视化终端并行执行 |
 | `my done` | 提交当前角色的输出 |
 | `my watch` | 恢复中断的自动检测 |
 | `my status` | 查看当前任务状态 |
 | `my cancel` | 取消当前任务 |
 
-### 模式 B：IDE-first Session 流程
+### Session 命令（多 IDE 手动编排）
 
-适合需要精细控制每一步的场景：
-
-```bash
-my session start --task tasks/examples/task-code-implement.json --mode strict
-my session pull --task-id <id> --agent windsurf     # 生成 builder prompt
-# → IDE 中完成工作，输出 JSON 到 .multi-agent/outbox/builder.json
-my session push --task-id <id> --agent windsurf --file .multi-agent/outbox/builder.json
-my session pull --task-id <id> --agent antigravity   # 生成 reviewer prompt
-# → reviewer 完成审查
-my session push --task-id <id> --agent antigravity --file .multi-agent/outbox/reviewer.json
-```
+适合需要精细控制每一步、或两个 IDE 协作的场景：
 
 | 命令 | 作用 |
 |---|---|
 | `my session start --task <json> --mode strict` | 初始化会话 |
-| `my session pull --task-id <id> --agent <agent>` | 生成 prompt |
-| `my session push --task-id <id> --agent <agent> --file <json>` | 提交结果 |
-| `my session status --task-id <id>` | 查看状态 |
+| `my session pull --task-id <id> --agent <agent>` | 为指定 IDE 生成 prompt |
+| `my session push --task-id <id> --agent <agent> --file <json>` | 提交该 IDE 的结果 |
+| `my session status --task-id <id>` | 查看会话状态 |
 
 ---
 
@@ -273,27 +305,6 @@ skills/                    # 技能定义 (contract.yaml)
 ```
 
 ---
-
-## 全部命令速查
-
-### 核心命令
-
-| 命令 | 说明 |
-|---|---|
-| `my go "<需求>"` | 启动任务并自动 watch |
-| `my done` | 提交当前角色输出 |
-| `my watch` | 恢复自动检测循环 |
-| `my status` | 查看任务状态 |
-| `my cancel` | 取消当前任务 |
-
-### Session 命令
-
-| 命令 | 说明 |
-|---|---|
-| `my session start` | 初始化会话 |
-| `my session pull` | 生成 agent prompt |
-| `my session push` | 提交 agent 输出 |
-| `my session status` | 查看会话状态 |
 
 ### 管理与诊断
 
