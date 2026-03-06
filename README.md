@@ -163,6 +163,22 @@ my go "..." --decompose-file result.json           # 从文件加载分解结果
 组 3 (可并行): sub-5, sub-6          ← 2 个并行
 ```
 
+**可视化终端 `--visible` (v0.7.0)**：每个 CLI agent 在独立 Terminal.app 窗口运行，实时可见输出。终端窗口以 MyGO!!!!! 乐队成员命名（燈/愛音/そよ/楽奈/立希花）。
+
+```bash
+# 3 个 Codex 并行 + 每个开独立终端窗口
+my go "实现贪吃蛇" --decompose --visible --builder codex --reviewer codex
+
+# 同一 agent 可同时做 builder 和 reviewer (cli/gui 驱动)
+my go "修复 bug" --visible --builder codex --reviewer codex
+```
+
+自定义终端名称（`.ma.yaml`）：
+
+```yaml
+agent_names: ["Alice", "Bob", "Charlie", "Diana", "Eve"]
+```
+
 ---
 
 ## 工作流架构

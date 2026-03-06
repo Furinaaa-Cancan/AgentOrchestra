@@ -8,14 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - **Parallel sub-task execution** — independent sub-tasks in `--decompose` mode now run concurrently via `ThreadPoolExecutor`
-- `subtask_workspace()`, `subtask_task_file()`, `subtask_outbox_dir()` utilities in `config.py` for isolated parallel workspaces
-- `_prepare_group()` and `run_group_parallel()` methods on `_DecomposeExecContext`
+- **`--visible` flag** — open each CLI agent in a separate Terminal.app window for real-time visibility (macOS)
+- **MyGO!!!!! persona names** — terminal windows named after band members (燈/愛音/そよ/楽奈/立希花), customizable via `.ma.yaml` `agent_names`
+- `spawn_cli_in_terminal()` — AppleScript-based visible terminal spawning with wrapper script
+- `subtask_workspace()`, `subtask_task_file()`, `subtask_outbox_dir()` utilities in `config.py`
+- `get_agent_name()`, `set_agent_names()`, `load_agent_names_from_config()` persona API
 - `OutboxPoller` accepts custom `watch_dir` for subtask-specific polling
 
 ### Changed
 - `_run_decomposed()` uses `topo_sort_grouped()` to execute groups: single-task groups run sequentially, multi-task groups run in parallel
-- `spawn_cli_agent()` and `dispatch_agent()` accept optional `subtask_id` parameter for workspace isolation
-- `_show_waiting()` and `_run_watch_loop()` pass `subtask_id` through to agent dispatch
+- `spawn_cli_agent()` and `dispatch_agent()` accept optional `subtask_id` and `visible` parameters
+- `_show_waiting()`, `_run_watch_loop()`, `_process_outbox()` pass `subtask_id` and `visible` through
+- Same agent allowed for builder and reviewer when using CLI/GUI drivers (relaxed restriction in `cli.py` and `router.py`)
+
+### Fixed
+- `test_lock_released_on_unexpected_error` — patch workspace module's local `workspace_dir` reference
 
 ## [0.6.1] - 2025-06-16
 
