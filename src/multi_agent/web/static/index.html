@@ -1,347 +1,446 @@
 <!DOCTYPE html>
-<html lang="zh-CN" class="dark">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MyGO Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
-      darkMode: 'class',
       theme: {
         extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
           colors: {
-            brand: { 50:'#eef2ff', 100:'#e0e7ff', 500:'#6366f1', 600:'#4f46e5', 700:'#4338ca', 900:'#312e81' },
-            surface: { 800:'#1e1b2e', 900:'#0f0d1a' },
-          }
+            bg:   { DEFAULT: '#0c0a14', card: '#13101f', hover: '#1a1629', border: '#1e1a2e' },
+            acc:  { DEFAULT: '#7c5cfc', dim: '#5b3fd4', glow: '#a78bfa', soft: 'rgba(124,92,252,0.08)' },
+            ok:   { DEFAULT: '#34d399', dim: '#064e3b' },
+            warn: { DEFAULT: '#fbbf24', dim: '#78350f' },
+            err:  { DEFAULT: '#f87171', dim: '#7f1d1d' },
+          },
         }
       }
     }
   </script>
   <style>
-    body { background: #0f0d1a; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
-    .glass { background: rgba(30,27,46,0.85); backdrop-filter: blur(12px); border: 1px solid rgba(99,102,241,0.15); }
-    .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
-    @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
-    .fade-in { animation: fadeIn 0.3s ease-out; }
-    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-    pre { white-space: pre-wrap; word-break: break-word; }
-    .task-card:hover { border-color: rgba(99,102,241,0.4); transform: translateY(-1px); }
-    .task-card { transition: all 0.2s ease; }
-    ::-webkit-scrollbar { width: 6px; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { background: #0c0a14; font-family: 'Inter', system-ui, sans-serif; margin: 0; }
+    /* Noise texture overlay */
+    body::before {
+      content: ''; position: fixed; inset: 0; z-index: -1; opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    }
+    .card {
+      background: #13101f; border: 1px solid #1e1a2e; border-radius: 16px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .card:hover { border-color: rgba(124,92,252,0.25); box-shadow: 0 0 24px rgba(124,92,252,0.06); }
+    .glow-line { background: linear-gradient(90deg, #7c5cfc, #a78bfa, #c4b5fd); height: 2px; border-radius: 2px; }
+    .fade-in { animation: fadeIn 0.35s ease-out both; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:translateY(0) } }
+    .pulse { animation: pulse 2.5s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.35 } }
+    .spin-slow { animation: spin 3s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg) } }
+    ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.3); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb { background: rgba(124,92,252,0.2); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(124,92,252,0.4); }
+    pre, code { font-family: 'JetBrains Mono', monospace; }
+    pre { white-space: pre-wrap; word-break: break-word; }
+    /* Pipeline step nodes */
+    .pipe-step { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #2d2742; background: #13101f; transition: all 0.3s; }
+    .pipe-step.active { border-color: #7c5cfc; background: #7c5cfc; box-shadow: 0 0 12px rgba(124,92,252,0.5); }
+    .pipe-step.done { border-color: #34d399; background: #34d399; }
+    .pipe-step.error { border-color: #f87171; background: #f87171; }
+    .pipe-line { height: 2px; flex: 1; background: #2d2742; transition: background 0.3s; }
+    .pipe-line.done { background: #34d399; }
+    .pipe-line.active { background: linear-gradient(90deg, #34d399, #7c5cfc); }
+    /* Task row */
+    .task-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center;
+      padding: 14px 18px; border-radius: 12px; cursor: pointer; transition: background 0.15s; }
+    .task-row:hover { background: #1a1629; }
+    /* Tab nav */
+    .tab { padding: 6px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; color: #6b6580; }
+    .tab:hover { color: #a89dc4; }
+    .tab.active { background: rgba(124,92,252,0.12); color: #a78bfa; }
   </style>
 </head>
-<body class="text-gray-200 min-h-screen">
+<body class="text-gray-300 min-h-screen flex flex-col">
 
-  <!-- Header -->
-  <header class="glass sticky top-0 z-50 px-6 py-3 flex items-center justify-between">
+  <!-- ═══ Top Bar ═══ -->
+  <header class="flex items-center justify-between px-6 py-3 border-b border-bg-border bg-bg/80 backdrop-blur-md sticky top-0 z-50">
     <div class="flex items-center gap-3">
-      <div class="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-        MyGO!!!!!
-      </div>
-      <span class="text-xs text-gray-500 mt-1">Dashboard v0.8.0</span>
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="13" stroke="url(#hg)" stroke-width="2"/><path d="M9 18V11l5 3.5L19 11v7" stroke="url(#hg)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="hg" x1="0" y1="0" x2="28" y2="28"><stop stop-color="#7c5cfc"/><stop offset="1" stop-color="#c4b5fd"/></linearGradient></defs></svg>
+      <span class="text-lg font-bold tracking-tight text-white">MyGO<span class="text-acc">!!!!!</span></span>
+      <span class="text-[11px] text-gray-600 ml-1 mt-0.5">Dashboard v0.8.0</span>
     </div>
-    <div class="flex items-center gap-4">
-      <div id="connection-status" class="flex items-center gap-2 text-xs">
-        <span class="w-2 h-2 rounded-full bg-gray-500" id="status-dot"></span>
-        <span id="status-text">Connecting...</span>
+    <div class="flex items-center gap-5">
+      <div class="flex items-center gap-2 text-xs" id="conn-wrap">
+        <span class="w-[7px] h-[7px] rounded-full bg-gray-600" id="conn-dot"></span>
+        <span class="text-gray-500" id="conn-text">Connecting</span>
       </div>
-      <button onclick="refreshAll()" class="px-3 py-1.5 text-xs rounded-lg bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/40 transition">
-        Refresh
+      <button onclick="refreshAll()" class="h-7 px-3 rounded-lg text-xs font-medium bg-acc/10 text-acc-glow hover:bg-acc/20 transition" title="Refresh">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="inline -mt-px mr-1"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>Refresh
       </button>
     </div>
   </header>
 
-  <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+  <!-- ═══ Main Content ═══ -->
+  <main class="flex-1 max-w-[1400px] w-full mx-auto px-5 py-5 space-y-5">
 
-    <!-- Status Cards Row -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="status-cards">
-      <div class="glass rounded-xl p-5">
-        <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Active Task</div>
-        <div class="text-lg font-semibold text-white" id="active-task">—</div>
+    <!-- Row 1: Status Cards -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- Active Task -->
+      <div class="card p-5 flex items-start gap-4">
+        <div class="w-10 h-10 rounded-xl bg-acc/10 flex items-center justify-center flex-shrink-0">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c5cfc" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        </div>
+        <div class="min-w-0">
+          <div class="text-[11px] text-gray-500 uppercase tracking-widest mb-1">Active Task</div>
+          <div class="text-[15px] font-semibold text-white truncate" id="active-task">—</div>
+        </div>
       </div>
-      <div class="glass rounded-xl p-5">
-        <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Project Root</div>
-        <div class="text-sm text-gray-300 font-mono truncate" id="project-root">—</div>
+      <!-- Pipeline -->
+      <div class="card p-5">
+        <div class="text-[11px] text-gray-500 uppercase tracking-widest mb-3">Workflow Pipeline</div>
+        <div class="flex items-center gap-1" id="pipeline">
+          <div class="text-center"><div class="pipe-step mx-auto"></div><div class="text-[9px] text-gray-600 mt-1">Plan</div></div>
+          <div class="pipe-line"></div>
+          <div class="text-center"><div class="pipe-step mx-auto"></div><div class="text-[9px] text-gray-600 mt-1">Build</div></div>
+          <div class="pipe-line"></div>
+          <div class="text-center"><div class="pipe-step mx-auto"></div><div class="text-[9px] text-gray-600 mt-1">Review</div></div>
+          <div class="pipe-line"></div>
+          <div class="text-center"><div class="pipe-step mx-auto"></div><div class="text-[9px] text-gray-600 mt-1">Decide</div></div>
+        </div>
       </div>
-      <div class="glass rounded-xl p-5">
-        <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Total Tasks</div>
-        <div class="text-lg font-semibold text-white" id="total-tasks">0</div>
+      <!-- Project -->
+      <div class="card p-5 flex items-start gap-4">
+        <div class="w-10 h-10 rounded-xl bg-acc/10 flex items-center justify-center flex-shrink-0">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c5cfc" stroke-width="2" stroke-linecap="round"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+        </div>
+        <div class="min-w-0">
+          <div class="text-[11px] text-gray-500 uppercase tracking-widest mb-1">Project</div>
+          <div class="text-[13px] font-mono text-gray-400 truncate" id="project-root">—</div>
+        </div>
       </div>
-    </div>
+      <!-- Total Tasks -->
+      <div class="card p-5 flex items-start gap-4">
+        <div class="w-10 h-10 rounded-xl bg-acc/10 flex items-center justify-center flex-shrink-0">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c5cfc" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        </div>
+        <div>
+          <div class="text-[11px] text-gray-500 uppercase tracking-widest mb-1">Total Tasks</div>
+          <div class="text-2xl font-bold text-white leading-none" id="total-tasks">0</div>
+        </div>
+      </div>
+    </section>
 
-    <!-- Main Grid: Dashboard + Timeline -->
-    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
-
-      <!-- Dashboard MD (left 3 cols) -->
-      <div class="lg:col-span-3 glass rounded-xl p-6">
-        <h2 class="text-sm font-semibold text-indigo-300 uppercase tracking-wider mb-4">Live Dashboard</h2>
-        <div id="dashboard-content" class="prose prose-invert prose-sm max-w-none text-gray-300">
-          <p class="text-gray-500 italic">No active task. Start one with: my go "requirement"</p>
+    <!-- Row 2: Dashboard + Events -->
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <!-- Live Dashboard -->
+      <div class="lg:col-span-2 card p-6 min-h-[320px]">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xs font-semibold text-acc-glow uppercase tracking-widest flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+            Live Dashboard
+          </h2>
+          <span class="text-[10px] text-gray-600" id="dashboard-updated"></span>
+        </div>
+        <div id="dashboard-content" class="text-[13px] leading-relaxed text-gray-400">
+          <div class="flex flex-col items-center justify-center py-12 text-center">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#2d2742" stroke-width="1.5" class="mb-4"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <p class="text-gray-600 text-sm">No active task</p>
+            <p class="text-gray-700 text-xs mt-1 font-mono">my go "your requirement"</p>
+          </div>
         </div>
       </div>
 
-      <!-- Event Timeline (right 2 cols) -->
-      <div class="lg:col-span-2 glass rounded-xl p-6 max-h-[600px] overflow-y-auto">
-        <h2 class="text-sm font-semibold text-indigo-300 uppercase tracking-wider mb-4">Event Stream</h2>
-        <div id="event-timeline" class="space-y-3">
-          <p class="text-gray-500 italic text-sm">Waiting for events...</p>
+      <!-- Event Stream -->
+      <div class="card p-5 flex flex-col max-h-[520px]">
+        <h2 class="text-xs font-semibold text-acc-glow uppercase tracking-widest mb-3 flex items-center gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          Event Stream
+        </h2>
+        <div id="event-timeline" class="flex-1 overflow-y-auto space-y-1 pr-1">
+          <p class="text-gray-600 text-xs italic py-8 text-center">Waiting for events...</p>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- Task List -->
-    <div class="glass rounded-xl p-6">
-      <h2 class="text-sm font-semibold text-indigo-300 uppercase tracking-wider mb-4">Task History</h2>
-      <div id="task-list" class="space-y-3">
-        <p class="text-gray-500 italic text-sm">Loading...</p>
-      </div>
-    </div>
-
-    <!-- Task Detail Modal -->
-    <div id="task-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div class="glass rounded-2xl p-6 max-w-3xl w-full mx-4 max-h-[80vh] overflow-y-auto fade-in">
-        <div class="flex justify-between items-center mb-4">
-          <h3 class="text-lg font-semibold text-white" id="modal-title">Task Detail</h3>
-          <button onclick="closeModal()" class="text-gray-400 hover:text-white text-xl">&times;</button>
+    <!-- Row 3: Task History -->
+    <section class="card">
+      <div class="flex items-center justify-between px-6 pt-5 pb-3">
+        <h2 class="text-xs font-semibold text-acc-glow uppercase tracking-widest flex items-center gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg>
+          Task History
+        </h2>
+        <div class="flex gap-1" id="task-tabs">
+          <div class="tab active" data-filter="all" onclick="filterTasks('all',this)">All</div>
+          <div class="tab" data-filter="active" onclick="filterTasks('active',this)">Active</div>
+          <div class="tab" data-filter="approved" onclick="filterTasks('approved',this)">Approved</div>
+          <div class="tab" data-filter="failed" onclick="filterTasks('failed',this)">Failed</div>
         </div>
-        <div id="modal-content" class="space-y-4"></div>
       </div>
-    </div>
-
+      <!-- Table header -->
+      <div class="grid grid-cols-[1fr_auto_auto] gap-3 px-6 py-2 text-[10px] text-gray-600 uppercase tracking-widest border-t border-bg-border">
+        <span>Task</span><span class="w-24 text-center">Status</span><span class="w-20 text-right">Time</span>
+      </div>
+      <div id="task-list" class="px-3 pb-3 max-h-[400px] overflow-y-auto">
+        <p class="text-gray-600 italic text-xs py-6 text-center">Loading...</p>
+      </div>
+    </section>
   </main>
 
+  <!-- ═══ Modal ═══ -->
+  <div id="task-modal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/70 backdrop-blur-sm" onclick="if(event.target===this)closeModal()">
+    <div class="card p-0 max-w-2xl w-full mx-4 max-h-[85vh] overflow-hidden fade-in" style="border-color:#2d2742">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-bg-border">
+        <h3 class="text-sm font-semibold text-white flex items-center gap-2" id="modal-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c5cfc" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+          Task Detail
+        </h3>
+        <button onclick="closeModal()" class="w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 hover:text-white hover:bg-white/10 transition text-lg">&times;</button>
+      </div>
+      <div id="modal-content" class="p-6 space-y-5 overflow-y-auto max-h-[calc(85vh-60px)]"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Footer ═══ -->
+  <footer class="text-center py-4 text-[11px] text-gray-700 border-t border-bg-border">
+    MyGO!!!!! Multi-agent Yielding Group Orchestra &middot; v0.8.0
+  </footer>
+
   <script>
-    // ── State ───────────────────────────
+    // ── State ─────────────────────────────
     let eventSource = null;
     let allEvents = [];
+    let allTasks = [];
+    let currentFilter = 'all';
 
-    // ── Init ────────────────────────────
-    document.addEventListener('DOMContentLoaded', () => {
-      refreshAll();
-      connectSSE();
-    });
+    // ── Init ──────────────────────────────
+    document.addEventListener('DOMContentLoaded', () => { refreshAll(); connectSSE(); });
 
-    async function refreshAll() {
-      await Promise.all([fetchStatus(), fetchTasks()]);
-    }
+    async function refreshAll() { await Promise.all([fetchStatus(), fetchTasks()]); }
 
-    // ── REST Fetchers ───────────────────
+    // ── REST ──────────────────────────────
 
     async function fetchStatus() {
       try {
-        const res = await fetch('/api/status');
-        const data = await res.json();
-        document.getElementById('active-task').textContent = data.active_task || '— idle —';
-        document.getElementById('project-root').textContent = data.root_dir || '—';
-        if (data.active_task) {
-          document.getElementById('active-task').classList.add('text-green-400');
+        const r = await fetch('/api/status');
+        const d = await r.json();
+        const el = document.getElementById('active-task');
+        if (d.active_task) {
+          el.textContent = d.active_task;
+          el.className = 'text-[15px] font-semibold text-ok truncate';
         } else {
-          document.getElementById('active-task').classList.remove('text-green-400');
+          el.textContent = '— idle —';
+          el.className = 'text-[15px] font-semibold text-gray-500 truncate';
         }
-        if (data.dashboard_md) {
-          renderMarkdown(data.dashboard_md);
-        }
-      } catch (e) {
-        console.error('Status fetch failed:', e);
-      }
+        document.getElementById('project-root').textContent = d.root_dir || '—';
+        if (d.dashboard_md) renderMarkdown(d.dashboard_md);
+        updatePipeline(d.active_task);
+      } catch (e) { console.error('Status fetch failed:', e); }
     }
 
     async function fetchTasks() {
       try {
-        const res = await fetch('/api/tasks');
-        const data = await res.json();
-        document.getElementById('total-tasks').textContent = data.count;
-        renderTaskList(data.tasks);
-      } catch (e) {
-        console.error('Tasks fetch failed:', e);
-      }
+        const r = await fetch('/api/tasks');
+        const d = await r.json();
+        document.getElementById('total-tasks').textContent = d.count;
+        allTasks = d.tasks || [];
+        renderTaskList(allTasks);
+      } catch (e) { console.error('Tasks fetch failed:', e); }
     }
 
     async function fetchTaskDetail(taskId) {
       try {
-        const res = await fetch(`/api/tasks/${taskId}`);
-        const data = await res.json();
-        showModal(taskId, data);
-      } catch (e) {
-        console.error('Task detail fetch failed:', e);
-      }
+        const r = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`);
+        const d = await r.json();
+        showModal(taskId, d);
+      } catch (e) { console.error('Task detail fetch failed:', e); }
     }
 
-    // ── SSE Connection ──────────────────
+    // ── SSE ───────────────────────────────
 
     function connectSSE() {
       if (eventSource) eventSource.close();
       eventSource = new EventSource('/api/events');
-
-      eventSource.addEventListener('connected', (e) => {
-        setConnectionStatus('connected');
+      eventSource.addEventListener('connected', () => setConn(true));
+      eventSource.addEventListener('heartbeat', () => setConn(true));
+      eventSource.addEventListener('dashboard_update', e => {
+        const d = JSON.parse(e.data);
+        if (d.content) renderMarkdown(d.content);
       });
-
-      eventSource.addEventListener('heartbeat', (e) => {
-        setConnectionStatus('connected');
+      eventSource.addEventListener('trace_update', e => {
+        const d = JSON.parse(e.data);
+        (d.new_events || []).forEach(evt => addTimelineEvent(evt));
       });
-
-      eventSource.addEventListener('dashboard_update', (e) => {
-        const data = JSON.parse(e.data);
-        if (data.content) renderMarkdown(data.content);
-      });
-
-      eventSource.addEventListener('trace_update', (e) => {
-        const data = JSON.parse(e.data);
-        if (data.new_events) {
-          data.new_events.forEach(evt => addTimelineEvent(evt));
-        }
-      });
-
-      eventSource.onerror = () => {
-        setConnectionStatus('disconnected');
-        setTimeout(connectSSE, 5000);
-      };
+      eventSource.onerror = () => { setConn(false); setTimeout(connectSSE, 5000); };
     }
 
-    function setConnectionStatus(status) {
-      const dot = document.getElementById('status-dot');
-      const text = document.getElementById('status-text');
-      if (status === 'connected') {
-        dot.className = 'w-2 h-2 rounded-full bg-green-400 pulse-dot';
-        text.textContent = 'Connected';
-        text.className = 'text-green-400';
-      } else {
-        dot.className = 'w-2 h-2 rounded-full bg-red-400';
-        text.textContent = 'Disconnected';
-        text.className = 'text-red-400';
-      }
+    function setConn(ok) {
+      const dot = document.getElementById('conn-dot');
+      const txt = document.getElementById('conn-text');
+      if (ok) { dot.className = 'w-[7px] h-[7px] rounded-full bg-ok pulse'; txt.textContent = 'Live'; txt.className = 'text-ok text-xs'; }
+      else     { dot.className = 'w-[7px] h-[7px] rounded-full bg-err';     txt.textContent = 'Offline'; txt.className = 'text-err text-xs'; }
     }
 
-    // ── Renderers ───────────────────────
+    // ── Pipeline ──────────────────────────
+
+    function updatePipeline(activeTask) {
+      const steps = document.querySelectorAll('#pipeline .pipe-step');
+      const lines = document.querySelectorAll('#pipeline .pipe-line');
+      steps.forEach(s => s.className = 'pipe-step mx-auto');
+      lines.forEach(l => l.className = 'pipe-line');
+      if (!activeTask) return;
+      // When a task is active, show plan as done and build as active (simplified view)
+      steps[0].classList.add('done');
+      lines[0].classList.add('active');
+      steps[1].classList.add('active');
+    }
+
+    // ── Renderers ─────────────────────────
 
     function renderMarkdown(md) {
-      const container = document.getElementById('dashboard-content');
-      // Simple markdown → HTML (headings, bold, lists, code blocks)
-      let html = md
-        .replace(/^### (.+)$/gm, '<h3 class="text-indigo-300 font-semibold mt-3 mb-1">$1</h3>')
-        .replace(/^## (.+)$/gm, '<h2 class="text-indigo-200 font-bold text-lg mt-4 mb-2">$1</h2>')
-        .replace(/^# (.+)$/gm, '<h1 class="text-white font-bold text-xl mt-4 mb-2">$1</h1>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong class="text-white">$1</strong>')
-        .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
-        .replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 list-decimal">$2</li>')
-        .replace(/```([\s\S]*?)```/g, '<pre class="bg-black/40 rounded-lg p-3 text-xs font-mono text-gray-300 my-2 overflow-x-auto">$1</pre>')
-        .replace(/`(.+?)`/g, '<code class="bg-black/30 px-1.5 py-0.5 rounded text-indigo-300 text-xs">$1</code>')
-        .replace(/\n\n/g, '<br><br>')
+      const c = document.getElementById('dashboard-content');
+      let h = md
+        .replace(/^#### (.+)$/gm, '<h4 class="text-gray-300 font-semibold text-xs mt-3 mb-1">$1</h4>')
+        .replace(/^### (.+)$/gm, '<h3 class="text-acc-glow font-semibold mt-4 mb-1">$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2 class="text-white font-bold text-base mt-5 mb-2">$1</h2>')
+        .replace(/^# (.+)$/gm, '<h1 class="text-white font-bold text-lg mt-5 mb-2">$1</h1>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
+        .replace(/^- (.+)$/gm, '<div class="flex gap-2 ml-1 my-0.5"><span class="text-acc mt-1 text-[8px]">&#9679;</span><span>$1</span></div>')
+        .replace(/^(\d+)\. (.+)$/gm, '<div class="flex gap-2 ml-1 my-0.5"><span class="text-acc-glow font-mono text-xs w-4">$1.</span><span>$2</span></div>')
+        .replace(/```([\s\S]*?)```/g, '<pre class="bg-bg rounded-xl p-4 text-xs text-gray-400 my-3 overflow-x-auto border border-bg-border">$1</pre>')
+        .replace(/`(.+?)`/g, '<code class="bg-bg px-1.5 py-0.5 rounded-md text-acc-glow text-xs border border-bg-border">$1</code>')
+        .replace(/\n\n/g, '<div class="h-3"></div>')
         .replace(/\n/g, '<br>');
-      container.innerHTML = html;
+      c.innerHTML = h;
+      document.getElementById('dashboard-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
     }
 
     function renderTaskList(tasks) {
-      const container = document.getElementById('task-list');
-      if (!tasks.length) {
-        container.innerHTML = '<p class="text-gray-500 italic text-sm">No tasks found</p>';
+      const c = document.getElementById('task-list');
+      const filtered = currentFilter === 'all' ? tasks : tasks.filter(t => {
+        const s = (t.status || '').toLowerCase();
+        if (currentFilter === 'active') return s === 'active' || s === 'running';
+        if (currentFilter === 'approved') return s === 'approved' || s === 'completed' || s === 'done';
+        if (currentFilter === 'failed') return s === 'failed' || s === 'cancelled' || s === 'escalated';
+        return true;
+      });
+      if (!filtered.length) {
+        c.innerHTML = `<p class="text-gray-600 italic text-xs py-8 text-center">${currentFilter === 'all' ? 'No tasks found' : 'No ' + currentFilter + ' tasks'}</p>`;
         return;
       }
-      container.innerHTML = tasks.slice(0, 30).map(t => {
-        const statusColor = getStatusColor(t.status);
-        const timeAgo = formatTimeAgo(t.modified);
-        const req = (t.requirement || '').substring(0, 120);
-        return `
-          <div class="task-card glass rounded-lg p-4 cursor-pointer" onclick="fetchTaskDetail('${t.task_id}')">
-            <div class="flex items-center justify-between mb-1">
-              <span class="font-mono text-xs text-gray-400">${t.task_id}</span>
-              <div class="flex items-center gap-2">
-                <span class="px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}">${t.status || '?'}</span>
-                <span class="text-xs text-gray-500">${timeAgo}</span>
-              </div>
-            </div>
-            <div class="text-sm text-gray-300 truncate">${escapeHtml(req)}</div>
-            ${t.current_agent ? `<div class="text-xs text-gray-500 mt-1">Agent: ${t.current_agent}</div>` : ''}
-          </div>`;
+      c.innerHTML = filtered.slice(0, 50).map(t => {
+        const sc = statusBadge(t.status);
+        const timeAgo = fmtTime(t.modified);
+        const req = esc((t.requirement || '').substring(0, 100));
+        return `<div class="task-row" onclick="fetchTaskDetail('${esc(t.task_id)}')">
+          <div class="min-w-0">
+            <div class="text-xs font-mono text-gray-500 mb-0.5">${esc(t.task_id)}</div>
+            <div class="text-[13px] text-gray-300 truncate">${req || '<span class=text-gray-600>—</span>'}</div>
+            ${t.current_agent ? `<div class="text-[11px] text-gray-600 mt-0.5">agent: ${esc(t.current_agent)}</div>` : ''}
+          </div>
+          <div class="w-24 text-center">${sc}</div>
+          <div class="w-20 text-right text-[11px] text-gray-600">${timeAgo}</div>
+        </div>`;
       }).join('');
+    }
+
+    function filterTasks(f, el) {
+      currentFilter = f;
+      document.querySelectorAll('#task-tabs .tab').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
+      renderTaskList(allTasks);
     }
 
     function addTimelineEvent(evt) {
       allEvents.unshift(evt);
       if (allEvents.length > 100) allEvents.pop();
-      const container = document.getElementById('event-timeline');
-      // Remove placeholder
-      if (container.querySelector('.italic')) container.innerHTML = '';
+      const c = document.getElementById('event-timeline');
+      if (c.querySelector('.italic')) c.innerHTML = '';
 
-      const typeColors = {
-        session_start: 'text-green-400 bg-green-400/10',
-        session_pull: 'text-blue-400 bg-blue-400/10',
-        session_push: 'text-purple-400 bg-purple-400/10',
-        node_enter: 'text-yellow-400 bg-yellow-400/10',
-        node_exit: 'text-orange-400 bg-orange-400/10',
+      const icons = {
+        session_start: ['#34d399', 'M5 3l14 9-14 9V3z'],
+        session_pull:  ['#60a5fa', 'M12 5v14M5 12l7 7 7-7'],
+        session_push:  ['#a78bfa', 'M12 19V5M5 12l7-7 7 7'],
+        node_enter:    ['#fbbf24', 'M13 2L3 14h9l-1 8 10-12h-9l1-8z'],
+        node_exit:     ['#fb923c', 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'],
       };
       const evtType = evt.event_type || evt.type || 'unknown';
-      const colorClass = typeColors[evtType] || 'text-gray-400 bg-gray-400/10';
+      const [color, path] = icons[evtType] || ['#6b7280', 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'];
       const ts = evt.timestamp ? new Date(evt.timestamp * 1000).toLocaleTimeString() : '';
       const actor = evt.actor || evt.agent || '';
-      const detail = evt.details ? (typeof evt.details === 'string' ? evt.details : JSON.stringify(evt.details).substring(0, 200)) : '';
+      const detail = evt.details ? (typeof evt.details === 'string' ? evt.details : JSON.stringify(evt.details).substring(0, 150)) : '';
 
       const el = document.createElement('div');
-      el.className = 'fade-in border-l-2 border-indigo-600/30 pl-3 py-1';
+      el.className = 'fade-in flex gap-2.5 py-2 px-2 rounded-lg hover:bg-bg-hover transition-colors';
       el.innerHTML = `
-        <div class="flex items-center gap-2 mb-0.5">
-          <span class="px-1.5 py-0.5 rounded text-xs font-mono ${colorClass}">${evtType}</span>
-          ${actor ? `<span class="text-xs text-gray-500">${actor}</span>` : ''}
-          <span class="text-xs text-gray-600 ml-auto">${ts}</span>
-        </div>
-        ${detail ? `<div class="text-xs text-gray-400 truncate">${escapeHtml(detail)}</div>` : ''}
-      `;
-      container.prepend(el);
-
-      // Keep max 50 DOM elements
-      while (container.children.length > 50) {
-        container.removeChild(container.lastChild);
-      }
-
-      // Auto-refresh status on important events
-      if (['session_start', 'session_push', 'node_exit'].includes(evtType)) {
-        fetchStatus();
-      }
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" class="flex-shrink-0 mt-0.5"><path d="${path}"/></svg>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <span class="text-[11px] font-mono font-medium" style="color:${color}">${evtType}</span>
+            ${actor ? `<span class="text-[10px] text-gray-600">${esc(actor)}</span>` : ''}
+            <span class="text-[10px] text-gray-700 ml-auto">${ts}</span>
+          </div>
+          ${detail ? `<div class="text-[11px] text-gray-500 truncate mt-0.5">${esc(detail)}</div>` : ''}
+        </div>`;
+      c.prepend(el);
+      while (c.children.length > 50) c.removeChild(c.lastChild);
+      if (['session_start', 'session_push', 'node_exit'].includes(evtType)) fetchStatus();
     }
 
-    // ── Modal ───────────────────────────
+    // ── Modal ─────────────────────────────
 
     function showModal(taskId, data) {
-      document.getElementById('modal-title').textContent = `Task: ${taskId}`;
-      const content = document.getElementById('modal-content');
+      document.getElementById('modal-title').innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c5cfc" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+        <span class="font-mono">${esc(taskId)}</span>`;
+      const c = document.getElementById('modal-content');
+      let h = '';
 
-      let html = '';
-
-      // Task data
       if (data.task_data && Object.keys(data.task_data).length) {
-        html += `<div>
-          <h4 class="text-xs text-indigo-300 uppercase tracking-wider mb-2">Task Config</h4>
-          <pre class="bg-black/40 rounded-lg p-3 text-xs font-mono text-gray-300 max-h-60 overflow-y-auto">${escapeHtml(JSON.stringify(data.task_data, null, 2))}</pre>
+        const td = data.task_data;
+        h += `<div>
+          <div class="text-[11px] text-gray-500 uppercase tracking-widest mb-3">Task Info</div>
+          <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+            ${td.status ? `<div><span class="text-gray-600">Status</span></div><div>${statusBadge(td.status)}</div>` : ''}
+            ${td.mode ? `<div><span class="text-gray-600">Mode</span></div><div class="text-gray-300">${esc(td.mode)}</div>` : ''}
+            ${td.builder ? `<div><span class="text-gray-600">Builder</span></div><div class="text-gray-300 font-mono">${esc(td.builder)}</div>` : ''}
+            ${td.reviewer ? `<div><span class="text-gray-600">Reviewer</span></div><div class="text-gray-300 font-mono">${esc(td.reviewer)}</div>` : ''}
+            ${td.requirement ? `<div class="col-span-2 mt-2"><span class="text-gray-600">Requirement</span><div class="text-gray-300 mt-1">${esc(td.requirement)}</div></div>` : ''}
+          </div>
         </div>`;
+        // Raw JSON toggle
+        h += `<details class="group"><summary class="text-[11px] text-gray-600 cursor-pointer hover:text-gray-400 transition">Raw JSON</summary>
+          <pre class="bg-bg rounded-xl p-4 text-[11px] text-gray-500 mt-2 max-h-48 overflow-y-auto border border-bg-border">${esc(JSON.stringify(td, null, 2))}</pre></details>`;
       }
 
-      // Trace events
       if (data.trace_events && data.trace_events.length) {
-        html += `<div>
-          <h4 class="text-xs text-indigo-300 uppercase tracking-wider mb-2">Trace Events (${data.trace_events.length})</h4>
-          <div class="space-y-2 max-h-80 overflow-y-auto">
+        h += `<div>
+          <div class="text-[11px] text-gray-500 uppercase tracking-widest mb-3">Trace Events <span class="text-gray-600 normal-case">(${data.trace_events.length})</span></div>
+          <div class="space-y-1 max-h-72 overflow-y-auto pr-1">
             ${data.trace_events.map(evt => {
-              const evtType = evt.event_type || evt.type || '?';
+              const et = evt.event_type || evt.type || '?';
               const ts = evt.timestamp ? new Date(evt.timestamp * 1000).toLocaleTimeString() : '';
               const actor = evt.actor || '';
-              return `<div class="border-l-2 border-indigo-600/20 pl-3 py-1 text-xs">
-                <span class="text-indigo-400 font-mono">${evtType}</span>
-                ${actor ? `<span class="text-gray-500 ml-2">${actor}</span>` : ''}
-                <span class="text-gray-600 ml-2">${ts}</span>
-                ${evt.details ? `<div class="text-gray-400 mt-0.5 truncate">${escapeHtml(typeof evt.details === 'string' ? evt.details : JSON.stringify(evt.details).substring(0, 300))}</div>` : ''}
+              const det = evt.details ? esc(typeof evt.details === 'string' ? evt.details : JSON.stringify(evt.details).substring(0, 250)) : '';
+              return `<div class="flex gap-2 py-1.5 px-2 rounded-lg hover:bg-bg-hover text-xs">
+                <span class="text-acc font-mono w-28 flex-shrink-0">${et}</span>
+                <span class="text-gray-600 w-16 flex-shrink-0">${actor}</span>
+                <span class="text-gray-700 w-16 flex-shrink-0 text-right">${ts}</span>
+                ${det ? `<span class="text-gray-500 truncate flex-1 ml-2">${det}</span>` : ''}
               </div>`;
             }).join('')}
           </div>
         </div>`;
       } else {
-        html += '<p class="text-gray-500 text-sm italic">No trace events found</p>';
+        h += '<p class="text-gray-600 text-xs italic text-center py-4">No trace events</p>';
       }
-
-      content.innerHTML = html;
+      c.innerHTML = h;
       document.getElementById('task-modal').classList.remove('hidden');
       document.getElementById('task-modal').classList.add('flex');
     }
@@ -351,40 +450,41 @@
       document.getElementById('task-modal').classList.remove('flex');
     }
 
-    // Close modal on backdrop click
-    document.getElementById('task-modal')?.addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) closeModal();
-    });
+    // Escape key closes modal
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
-    // ── Utils ────────────────────────────
+    // ── Utils ─────────────────────────────
 
-    function getStatusColor(status) {
-      const map = {
-        approved: 'bg-green-500/20 text-green-300',
-        completed: 'bg-green-500/20 text-green-300',
-        running: 'bg-blue-500/20 text-blue-300',
-        active: 'bg-blue-500/20 text-blue-300',
-        rejected: 'bg-red-500/20 text-red-300',
-        failed: 'bg-red-500/20 text-red-300',
-        cancelled: 'bg-gray-500/20 text-gray-300',
-        pending: 'bg-yellow-500/20 text-yellow-300',
+    function statusBadge(s) {
+      const m = {
+        approved:  'bg-ok/15 text-ok border-ok/20',
+        completed: 'bg-ok/15 text-ok border-ok/20',
+        done:      'bg-ok/15 text-ok border-ok/20',
+        running:   'bg-acc/15 text-acc-glow border-acc/20',
+        active:    'bg-acc/15 text-acc-glow border-acc/20',
+        failed:    'bg-err/15 text-err border-err/20',
+        escalated: 'bg-err/15 text-err border-err/20',
+        cancelled: 'bg-gray-500/15 text-gray-400 border-gray-500/20',
+        pending:   'bg-warn/15 text-warn border-warn/20',
       };
-      return map[(status || '').toLowerCase()] || 'bg-gray-500/20 text-gray-400';
+      const cls = m[(s||'').toLowerCase()] || 'bg-gray-500/15 text-gray-500 border-gray-500/20';
+      return `<span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${cls}">${esc(s||'?')}</span>`;
     }
 
-    function formatTimeAgo(ts) {
+    function fmtTime(ts) {
       if (!ts) return '';
-      const diff = (Date.now() / 1000) - ts;
-      if (diff < 60) return 'just now';
-      if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
-      if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
-      return `${Math.floor(diff/86400)}d ago`;
+      const d = (Date.now()/1000) - ts;
+      if (d < 60) return 'just now';
+      if (d < 3600) return `${Math.floor(d/60)}m ago`;
+      if (d < 86400) return `${Math.floor(d/3600)}h ago`;
+      return `${Math.floor(d/86400)}d ago`;
     }
 
-    function escapeHtml(str) {
-      const div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML;
+    function esc(s) {
+      if (!s) return '';
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
     }
   </script>
 </body>
