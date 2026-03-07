@@ -250,7 +250,7 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c9a96e" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
               <span data-i18n="event_stream">Event Stream</span>
             </h2>
-            <span class="text-[10px] text-zinc-700 font-mono" id="event-count" data-i18n="event_count_zero">0 events</span>
+            <span class="text-[10px] text-zinc-700 font-mono" id="event-count">0 events</span>
           </div>
           <div id="event-timeline" class="flex-1 overflow-y-auto p-3 space-y-0.5">
             <div class="flex items-center justify-center py-16">
@@ -449,6 +449,8 @@
       const tabs = document.querySelectorAll('#task-tabs .tab-btn');
       const tabKeys = ['tab_all', 'tab_active', 'tab_done', 'tab_failed'];
       tabs.forEach((tab, i) => { if (tabKeys[i]) tab.textContent = t(tabKeys[i]); });
+      // Refresh dynamic counters (no data-i18n to avoid overwrite conflicts)
+      document.getElementById('event-count').textContent = tf('events_count', allEvents.length);
     }
 
     function toggleLang() {

@@ -238,17 +238,25 @@ app.get("/api/events", (req, res) => {
         }
       }
 
-      // Trace file update
+      // Trace file update — read only new bytes (no duplicates)
       if (filepath.endsWith(".jsonl")) {
         const stat = fs.statSync(filepath);
         const fname = path.basename(filepath);
         const prevSize = traceSizes[fname] || 0;
         if (stat.size > prevSize) {
           traceSizes[fname] = stat.size;
-          const allEvents = parseJsonlFile(filepath);
-          // Only send new events (approximate by count)
-          const prevCount = Math.max(0, prevSize > 0 ? allEvents.length - 5 : 0);
-          const newEvents = allEvents.slice(prevCount);
+          // Read only the new portion of the file
+          const fd = fs.openSync(filepath, "r");
+          const buf = Buffer.alloc(stat.size - prevSize);
+          fs.readSync(fd, buf, 0, buf.length, prevSize);
+          fs.closeSync(fd);
+          const newContent = buf.toString("utf-8");
+          const newEvents = [];
+          for (const line of newContent.split("\n")) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try { newEvents.push(JSON.parse(trimmed)); } catch { /* skip */ }
+          }
           if (newEvents.length > 0) {
             res.write(sseFormat("trace_update", { file: fname, new_events: newEvents, size: stat.size }));
           }
