@@ -707,6 +707,7 @@ def _decide_request_changes(
 
 def _decide_reject_retry(
     state: WorkflowState, reviewer_output: dict[str, Any],
+    *, original_convo: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Handle reject decision with retry budget in decide_node."""
     retry_count = state.get("retry_count", 0) + 1
@@ -760,12 +761,14 @@ def _decide_reject_retry(
             " 建议: 考虑从头重新实现而非继续修补同一代码 (fresh start strategy)。"
         )
 
+    # Use original (pre-trim) conversation for dashboard to avoid truncated display
+    dashboard_convo = original_convo if original_convo is not None else state.get("conversation", [])
     write_dashboard(
         task_id=state["task_id"],
         done_criteria=state.get("done_criteria", []),
         current_agent=state.get("builder_id", ""),
         current_role="builder",
-        conversation=state.get("conversation", []),
+        conversation=dashboard_convo,
         status_msg=f"🔄 重试 ❌ 驳回 ({retry_count}/{budget})",
     )
 
@@ -862,7 +865,7 @@ def decide_node(state: WorkflowState) -> dict[str, Any]:
     elif decision == "request_changes":
         result = _decide_request_changes(state, reviewer_output, original_convo=original_convo)
     else:
-        result = _decide_reject_retry(state, reviewer_output)
+        result = _decide_reject_retry(state, reviewer_output, original_convo=original_convo)
 
     graph_hooks.fire_exit("decide", state, result)
     return result
