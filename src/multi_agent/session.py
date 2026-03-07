@@ -27,13 +27,13 @@ from multi_agent._utils import (
     count_nonempty_entries as _count_nonempty_entries,
 )
 from multi_agent._utils import (
-    validate_agent_id as _validate_agent_id_core,
-)
-from multi_agent._utils import (
     now_utc as _now_utc,
 )
 from multi_agent._utils import (
     positive_int as _positive_int,
+)
+from multi_agent._utils import (
+    validate_agent_id as _validate_agent_id_core,
 )
 from multi_agent._utils import (
     validate_task_id as _validate_task_id_core,

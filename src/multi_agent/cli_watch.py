@@ -25,8 +25,10 @@ from multi_agent._utils import (
 from multi_agent.workspace import (
     clear_runtime,
     release_lock,
-    update_task_yaml as save_task_yaml,
     validate_outbox_data,
+)
+from multi_agent.workspace import (
+    update_task_yaml as save_task_yaml,
 )
 
 # Serializes resume_task + sync so parallel subtasks don't corrupt global TASK.md/outbox
@@ -46,6 +48,39 @@ def _sync_subtask_workspace(subtask_id: str) -> None:
     subtask_outbox_dir(subtask_id).mkdir(parents=True, exist_ok=True)
 
 
+def _reviewer_evidence_cfg(state_values: dict[str, Any]) -> tuple[bool, int]:
+    """Extract (require_evidence, min_evidence) from state's review_policy."""
+    workflow_mode = str(state_values.get("workflow_mode", "")).lower().strip() or "normal"
+    review_policy = state_values.get("review_policy")
+    if not isinstance(review_policy, dict):
+        review_policy = {}
+    reviewer_cfg = review_policy.get("reviewer")
+    if not isinstance(reviewer_cfg, dict):
+        reviewer_cfg = {}
+    require = bool(reviewer_cfg.get("require_evidence_on_approve", workflow_mode == "strict"))
+    minimum = _positive_int(reviewer_cfg.get("min_evidence_items"), 1) if require else 0
+    return require, minimum
+
+
+def _ensure_evidence(out: dict[str, Any], min_evidence: int) -> None:
+    """Ensure approve output has enough evidence, auto-populating from feedback if needed."""
+    evidence_items = _count_nonempty_entries(out.get("evidence"))
+    evidence_items += _count_nonempty_entries(out.get("evidence_files"))
+    if evidence_items >= min_evidence:
+        return
+    feedback = out.get("feedback", "") or out.get("summary", "")
+    if feedback and isinstance(feedback, str) and feedback.strip():
+        if not out.get("evidence"):
+            out["evidence"] = [feedback.strip()]
+        evidence_items = 1
+    if evidence_items < min_evidence:
+        raise ValueError(
+            "reviewer approve requires evidence: "
+            f"need >= {min_evidence}, got {evidence_items}. "
+            "Provide result.evidence and/or evidence_files."
+        )
+
+
 def _normalize_resume_output(role: str, data: dict[str, Any], state_values: dict[str, Any]) -> dict[str, Any]:
     """Normalize/validate resume payload for legacy go/watch/done path."""
     if role != "reviewer":
@@ -60,34 +95,9 @@ def _normalize_resume_output(role: str, data: dict[str, Any], state_values: dict
         out["decision"] = "reject"
         decision = "reject"
 
-    workflow_mode = str(state_values.get("workflow_mode", "")).lower().strip() or "normal"
-    review_policy = state_values.get("review_policy")
-    if not isinstance(review_policy, dict):
-        review_policy = {}
-    reviewer_cfg = review_policy.get("reviewer")
-    if not isinstance(reviewer_cfg, dict):
-        reviewer_cfg = {}
-
-    require_evidence = bool(reviewer_cfg.get("require_evidence_on_approve", workflow_mode == "strict"))
-    min_evidence = _positive_int(reviewer_cfg.get("min_evidence_items"), 1) if require_evidence else 0
-
+    require_evidence, min_evidence = _reviewer_evidence_cfg(state_values)
     if decision == "approve" and require_evidence:
-        evidence_items = _count_nonempty_entries(out.get("evidence"))
-        evidence_items += _count_nonempty_entries(out.get("evidence_files"))
-        if evidence_items < min_evidence:
-            # Auto-populate evidence from feedback/summary for CLI-driven reviews
-            feedback = out.get("feedback", "") or out.get("summary", "")
-            if feedback and isinstance(feedback, str) and feedback.strip():
-                # Use direct assignment — setdefault won't replace existing empty []
-                if not out.get("evidence"):
-                    out["evidence"] = [feedback.strip()]
-                evidence_items = 1
-            if evidence_items < min_evidence:
-                raise ValueError(
-                    "reviewer approve requires evidence: "
-                    f"need >= {min_evidence}, got {evidence_items}. "
-                    "Provide result.evidence and/or evidence_files."
-                )
+        _ensure_evidence(out, min_evidence)
     return out
 
 

@@ -31,8 +31,10 @@ from multi_agent.workspace import (
     read_lock,
     read_outbox,
     release_lock,
-    update_task_yaml as save_task_yaml,
     validate_outbox_data,
+)
+from multi_agent.workspace import (
+    update_task_yaml as save_task_yaml,
 )
 
 _F = TypeVar("_F", bound=Callable[..., Any])
