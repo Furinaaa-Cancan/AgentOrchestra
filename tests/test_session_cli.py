@@ -620,3 +620,48 @@ def test_session_push_strict_rubber_stamp_approve_returns_to_builder(runner: Cli
     assert payload["current_role"] == "builder"
     assert payload["current_agent"] == "windsurf"
     assert payload["final_status"] is None
+
+
+def test_session_pull_rejects_invalid_agent_id(runner: CliRunner, session_root):
+    task_file = str(session_root["task_file"])
+    res = runner.invoke(main, ["session", "start", "--task", task_file, "--mode", "strict"])
+    assert res.exit_code == 0
+
+    res = runner.invoke(
+        main,
+        ["session", "pull", "--task-id", "task-session-abc", "--agent", "../evil"],
+    )
+    assert res.exit_code != 0
+    assert "invalid agent_id" in res.output
+
+
+def test_session_push_rejects_invalid_agent_id(runner: CliRunner, session_root):
+    task_file = str(session_root["task_file"])
+    res = runner.invoke(main, ["session", "start", "--task", task_file, "--mode", "strict"])
+    assert res.exit_code == 0
+
+    builder_env = {
+        "protocol_version": "1.0",
+        "task_id": "task-session-abc",
+        "lane_id": "main",
+        "agent": "windsurf",
+        "role": "builder",
+        "state_seen": "RUNNING",
+        "result": {
+            "status": "completed",
+            "summary": "implemented endpoint",
+            "changed_files": ["/tmp/app/main.py"],
+            "check_results": {"lint": "pass", "unit_test": "pass"},
+        },
+        "recommended_event": "builder_done",
+        "evidence_files": [],
+        "created_at": "2026-03-02T00:00:00Z",
+    }
+    builder_path = _write_json(session_root["root"] / "builder-invalid-agent.json", builder_env)
+
+    res = runner.invoke(
+        main,
+        ["session", "push", "--task-id", "task-session-abc", "--agent", "../evil", "--file", str(builder_path)],
+    )
+    assert res.exit_code != 0
+    assert "invalid agent_id" in res.output

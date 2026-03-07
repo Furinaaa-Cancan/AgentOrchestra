@@ -27,6 +27,9 @@ from multi_agent._utils import (
     count_nonempty_entries as _count_nonempty_entries,
 )
 from multi_agent._utils import (
+    validate_agent_id as _validate_agent_id_core,
+)
+from multi_agent._utils import (
     now_utc as _now_utc,
 )
 from multi_agent._utils import (
@@ -88,6 +91,10 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 def _validate_task_id(task_id: str) -> None:
     _validate_task_id_core(task_id)
+
+
+def _validate_agent_id(agent_id: str) -> None:
+    _validate_agent_id_core(agent_id)
 
 
 def _clear_task_checkpoint(task_id: str) -> None:
@@ -319,6 +326,7 @@ def _task_md_path() -> Path:
 
 
 def _prompt_path(agent: str) -> Path:
+    _validate_agent_id(agent)
     return root_dir() / "prompts" / f"current-{agent}.txt"
 
 
@@ -376,6 +384,7 @@ def build_agent_prompt(
     *,
     roles_override: SessionRoles | None = None,
 ) -> tuple[str, dict[str, Any]]:
+    _validate_agent_id(agent)
     app = _compile_graph_app()
     snapshot = app.get_state(_config(task_id))
     state, owner_role, owner_agent = _state_from_snapshot(snapshot)
@@ -858,6 +867,7 @@ def session_status(task_id: str) -> dict[str, Any]:
 
 def session_pull(task_id: str, agent: str, *, out: str | None = None) -> dict[str, Any]:
     _validate_task_id(task_id)
+    _validate_agent_id(agent)
     prompt, meta = build_agent_prompt(task_id, agent)
     out_path = Path(out) if out else _prompt_path(agent)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -954,6 +964,7 @@ def _post_push_hooks(
 
 def session_push(task_id: str, agent: str, file_path: str) -> dict[str, Any]:
     _validate_task_id(task_id)
+    _validate_agent_id(agent)
     app = _compile_graph_app()
     cfg = _config(task_id)
     snapshot = app.get_state(cfg)
