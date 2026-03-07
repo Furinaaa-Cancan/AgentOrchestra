@@ -212,7 +212,7 @@ def _read_trace_events(task_id: str) -> list[dict[str, Any]]:
     hdir = history_dir()
 
     # Try direct file match first
-    for pattern in [f"{task_id}.jsonl", f"task-{task_id}.jsonl"]:
+    for pattern in [f"{task_id}.events.jsonl", f"task-{task_id}.events.jsonl", f"{task_id}.jsonl", f"task-{task_id}.jsonl"]:
         trace_file = hdir / pattern
         if trace_file.exists():
             return _parse_jsonl_file(trace_file)

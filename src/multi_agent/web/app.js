@@ -94,8 +94,8 @@ function parseJsonlFile(filepath) {
 }
 
 function readTraceEvents(taskId) {
-  // Direct file match
-  for (const pattern of [`${taskId}.jsonl`, `task-${taskId}.jsonl`]) {
+  // Direct file match (supports: id.jsonl, task-id.jsonl, task-id.events.jsonl, id.events.jsonl)
+  for (const pattern of [`${taskId}.events.jsonl`, `task-${taskId}.events.jsonl`, `${taskId}.jsonl`, `task-${taskId}.jsonl`]) {
     const fp = path.join(historyDir, pattern);
     if (fs.existsSync(fp)) {
       return parseJsonlFile(fp);
