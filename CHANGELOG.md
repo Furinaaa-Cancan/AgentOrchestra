@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.1] - 2026-03-07
+
+### Changed
+- `scripts/smoke_mvp.sh` now runs session-mode smoke in an isolated `MA_ROOT` workspace, preventing interference from existing active tasks and stale locks.
+- Session smoke flow is simplified to LangGraph SSOT validation (legacy transition replay removed from smoke path).
+
 ## [0.7.0] - 2025-06-17
 
 ### Added

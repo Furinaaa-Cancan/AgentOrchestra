@@ -9,52 +9,46 @@ if [ -x ".venv/bin/python" ]; then
   PY_BIN=".venv/bin/python"
 fi
 
-echo "[1/7] Validate skills"
+SMOKE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mygo-smoke.XXXXXX")"
+cleanup() {
+  rm -rf "$SMOKE_ROOT"
+}
+trap cleanup EXIT
+
+cp -R skills "$SMOKE_ROOT/skills"
+cp -R agents "$SMOKE_ROOT/agents"
+cp -R config "$SMOKE_ROOT/config"
+mkdir -p "$SMOKE_ROOT/runtime" "$SMOKE_ROOT/prompts"
+cp tasks/examples/task-code-implement.json "$SMOKE_ROOT/runtime/task-session-smoke.json"
+
+echo "[1/6] Validate skills"
 python3 scripts/mvp_ctl.py validate-skill --skill-dir skills/task-decompose
 python3 scripts/mvp_ctl.py validate-skill --skill-dir skills/code-implement
 python3 scripts/mvp_ctl.py validate-skill --skill-dir skills/test-and-review
 
-echo "[2/7] Validate task"
+echo "[2/6] Validate task"
 python3 scripts/mvp_ctl.py validate-task --task tasks/examples/task-code-implement.json
 
-echo "[3/7] Route task"
+echo "[3/6] Route task"
 python3 scripts/mvp_ctl.py route --task tasks/examples/task-code-implement.json --agents agents/profiles.json
 
-echo "[4/7] Verify checks (pass case)"
+echo "[4/6] Verify checks (pass case)"
 python3 scripts/mvp_ctl.py verify-checks --task tasks/examples/task-code-implement.json --results tasks/examples/check-results-pass.json
 
-echo "[5/7] Run state machine transitions"
-python3 - <<'PY'
-import json
-from pathlib import Path
-
-src = Path("tasks/examples/task-code-implement.json")
-dst = Path("runtime/task-run.json")
-data = json.loads(src.read_text(encoding="utf-8"))
-data["state"] = "QUEUED"
-data["owner"] = "planner"
-data["consumer"] = "pending"
-data["updated_at"] = data["created_at"]
-data.pop("error", None)
-dst.write_text(json.dumps(data, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
-PY
-python3 scripts/mvp_ctl.py transition --task runtime/task-run.json --to-state ASSIGNED --actor orchestrator --reason "dispatch"
-python3 scripts/mvp_ctl.py transition --task runtime/task-run.json --to-state RUNNING --actor codex --reason "worker-start"
-python3 scripts/mvp_ctl.py transition --task runtime/task-run.json --to-state VERIFYING --actor codex --reason "impl-finished"
-python3 scripts/mvp_ctl.py transition --task runtime/task-run.json --to-state APPROVED --actor reviewer --reason "checks-pass"
-python3 scripts/mvp_ctl.py transition --task runtime/task-run.json --to-state MERGED --actor orchestrator --reason "merge"
-python3 scripts/mvp_ctl.py transition --task runtime/task-run.json --to-state DONE --actor orchestrator --reason "complete"
-
-echo "[6/7] Validate lock lifecycle"
+echo "[5/6] Validate lock lifecycle"
 python3 scripts/lockctl.py acquire --task-id task-api-user-create --file-path scripts/mvp_ctl.py --ttl-sec 30
 python3 scripts/lockctl.py list
 python3 scripts/lockctl.py renew --task-id task-api-user-create --file-path scripts/mvp_ctl.py --ttl-sec 30
 python3 scripts/lockctl.py release --task-id task-api-user-create --file-path scripts/mvp_ctl.py
 
-echo "[7/8] Session-mode smoke (LangGraph SSOT)"
-cp tasks/examples/task-code-implement.json runtime/task-session-smoke.json
-PYTHONPATH=src "$PY_BIN" -m multi_agent.cli session start --task runtime/task-session-smoke.json --mode strict --config config/workmode.yaml --reset >/dev/null
-cat > runtime/session-builder.json <<'JSON'
+echo "[6/6] Session-mode smoke (LangGraph SSOT, isolated MA_ROOT)"
+MA_ROOT="$SMOKE_ROOT" PYTHONPATH=src "$PY_BIN" -m multi_agent.cli session start \
+  --task "$SMOKE_ROOT/runtime/task-session-smoke.json" \
+  --mode strict \
+  --config "$SMOKE_ROOT/config/workmode.yaml" \
+  --reset >/dev/null
+
+cat > "$SMOKE_ROOT/runtime/session-builder.json" <<'JSON'
 {
   "protocol_version": "1.0",
   "task_id": "task-api-user-create",
@@ -78,8 +72,12 @@ cat > runtime/session-builder.json <<'JSON'
   "created_at": "2026-03-02T00:00:00Z"
 }
 JSON
-PYTHONPATH=src "$PY_BIN" -m multi_agent.cli session push --task-id task-api-user-create --agent windsurf --file runtime/session-builder.json >/dev/null
-cat > runtime/session-reviewer.json <<'JSON'
+MA_ROOT="$SMOKE_ROOT" PYTHONPATH=src "$PY_BIN" -m multi_agent.cli session push \
+  --task-id task-api-user-create \
+  --agent windsurf \
+  --file "$SMOKE_ROOT/runtime/session-builder.json" >/dev/null
+
+cat > "$SMOKE_ROOT/runtime/session-reviewer.json" <<'JSON'
 {
   "protocol_version": "1.0",
   "task_id": "task-api-user-create",
@@ -100,7 +98,11 @@ cat > runtime/session-reviewer.json <<'JSON'
   "created_at": "2026-03-02T00:00:00Z"
 }
 JSON
-PYTHONPATH=src "$PY_BIN" -m multi_agent.cli session push --task-id task-api-user-create --agent antigravity --file runtime/session-reviewer.json >/dev/null
-PYTHONPATH=src "$PY_BIN" -m multi_agent.cli session status --task-id task-api-user-create | rg '"state": "DONE"' >/dev/null
+MA_ROOT="$SMOKE_ROOT" PYTHONPATH=src "$PY_BIN" -m multi_agent.cli session push \
+  --task-id task-api-user-create \
+  --agent antigravity \
+  --file "$SMOKE_ROOT/runtime/session-reviewer.json" >/dev/null
+MA_ROOT="$SMOKE_ROOT" PYTHONPATH=src "$PY_BIN" -m multi_agent.cli session status \
+  --task-id task-api-user-create | rg '"state": "DONE"' >/dev/null
 
-echo "[8/8] Smoke test completed"
+echo "[6/6] Smoke test completed"
