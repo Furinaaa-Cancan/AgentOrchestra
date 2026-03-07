@@ -595,6 +595,31 @@ class TestSaveTaskYamlAtomic:
         result = yaml.safe_load(path.read_text(encoding="utf-8"))
         assert result["status"] == "v2"
 
+    def test_update_task_yaml_preserves_existing_fields(self, tmp_workspace):
+        """update_task_yaml should merge updates without dropping metadata."""
+        import yaml
+
+        workspace.ensure_workspace()
+        workspace.save_task_yaml(
+            "task-merge",
+            {
+                "task_id": "task-merge",
+                "status": "active",
+                "builder": "windsurf",
+                "reviewer": "codex",
+                "mode": "session",
+            },
+        )
+        workspace.update_task_yaml("task-merge", {"status": "failed", "error": "boom"})
+
+        path = tmp_workspace / "tasks" / "task-merge.yaml"
+        result = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert result["status"] == "failed"
+        assert result["error"] == "boom"
+        assert result["builder"] == "windsurf"
+        assert result["reviewer"] == "codex"
+        assert result["mode"] == "session"
+
 
 class TestCleanupOSError:
     """Cover lines 370, 378-379: cleanup skips dirs and handles OSError."""

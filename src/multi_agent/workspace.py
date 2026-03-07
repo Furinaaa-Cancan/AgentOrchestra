@@ -191,6 +191,28 @@ def save_task_yaml(task_id: str, data: dict[str, Any]) -> Path:
     return path
 
 
+def update_task_yaml(task_id: str, updates: dict[str, Any]) -> Path:
+    """Merge-update task YAML while preserving existing metadata fields."""
+    import yaml
+
+    _validate_task_id(task_id)
+    ensure_workspace()
+    path = tasks_dir() / f"{task_id}.yaml"
+    existing: dict[str, Any] = {}
+    if path.exists():
+        try:
+            existing = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            existing = {}
+        if not isinstance(existing, dict):
+            existing = {}
+
+    merged = dict(existing)
+    merged.update(updates)
+    merged["task_id"] = task_id
+    return save_task_yaml(task_id, merged)
+
+
 # ── Task Lock ─────────────────────────────────────────────
 
 def _lock_path() -> Path:

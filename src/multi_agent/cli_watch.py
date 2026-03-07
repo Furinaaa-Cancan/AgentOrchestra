@@ -25,7 +25,7 @@ from multi_agent._utils import (
 from multi_agent.workspace import (
     clear_runtime,
     release_lock,
-    save_task_yaml,
+    update_task_yaml as save_task_yaml,
     validate_outbox_data,
 )
 
@@ -122,7 +122,7 @@ def _handle_terminal(
     """Handle terminal task status in watch loop."""
     final = status.final_status or "done"
     if final:
-        save_task_yaml(task_id, {"task_id": task_id, "status": final})
+        save_task_yaml(task_id, {"status": final})
     if manage_lock:
         release_lock()
         clear_runtime()
@@ -188,7 +188,7 @@ def _process_outbox(poller: Any, role: str, agent: str, status: Any, app: Any, t
                     release_lock()
                     clear_runtime()
                 click.echo(f"[{ts}] ❌ Error: {e}", err=True)
-                save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
+                save_task_yaml(task_id, {"status": "failed", "error": str(e)})
                 return "return"
 
             if not next_status.is_terminal and next_status.waiting_role:

@@ -60,7 +60,7 @@ def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
 
 def _candidate_cwds(db_path: pathlib.Path) -> list[pathlib.Path]:
     base = db_path.resolve().parent
-    out = [pathlib.Path.cwd(), base, base.parent]
+    out = [base.parent, base, pathlib.Path.cwd()]
     dedup: list[pathlib.Path] = []
     seen: set[str] = set()
     for p in out:
@@ -70,6 +70,28 @@ def _candidate_cwds(db_path: pathlib.Path) -> list[pathlib.Path]:
         seen.add(key)
         dedup.append(p)
     return dedup
+
+
+def _canonical_candidates(raw_path: str, *, candidate_cwds: list[pathlib.Path]) -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+
+    def _add(value: str) -> None:
+        if value in seen:
+            return
+        seen.add(value)
+        ordered.append(value)
+
+    try:
+        p = pathlib.Path(raw_path).expanduser()
+        if p.is_absolute():
+            _add(normalize_path(raw_path))
+            return ordered
+        for cwd in candidate_cwds:
+            _add(normalize_path(raw_path, cwd=cwd))
+    except Exception:
+        return []
+    return ordered
 
 
 def find_lock_by_canonical(
@@ -87,15 +109,7 @@ def find_lock_by_canonical(
     rows = conn.execute("SELECT * FROM locks").fetchall()
     for candidate in rows:
         raw_path = str(candidate["file_path"])
-        normalized: set[str] = set()
-        try:
-            p = pathlib.Path(raw_path).expanduser()
-            if p.is_absolute():
-                normalized.add(normalize_path(raw_path))
-            for cwd in cwds:
-                normalized.add(normalize_path(raw_path, cwd=cwd))
-        except Exception:
-            continue
+        normalized = _canonical_candidates(raw_path, candidate_cwds=cwds)
         if canonical_path in normalized:
             return candidate
     return None
@@ -247,13 +261,20 @@ def command_doctor(args: argparse.Namespace) -> int:
     now_ts = int(time.time())
     issues: list[dict[str, Any]] = []
     fixed: list[dict[str, Any]] = []
-    with connect(pathlib.Path(args.db)) as conn:
+    db_path = pathlib.Path(args.db)
+    cwds = _candidate_cwds(db_path)
+    with connect(db_path) as conn:
         conn.execute("BEGIN IMMEDIATE")
         cleanup_expired(conn, now_ts)
         rows = conn.execute("SELECT * FROM locks ORDER BY file_path ASC").fetchall()
         for row in rows:
             file_path = str(row["file_path"])
-            canonical = normalize_path(file_path)
+            candidates = _canonical_candidates(file_path, candidate_cwds=cwds)
+            if not candidates:
+                canonical = file_path
+            else:
+                existing = [c for c in candidates if pathlib.Path(c).exists()]
+                canonical = existing[0] if existing else candidates[0]
             row_issue: dict[str, Any] | None = None
 
             if canonical != file_path:
@@ -280,7 +301,7 @@ def command_doctor(args: argparse.Namespace) -> int:
                     "note": "Path does not currently exist; lock may still be valid for planned file creation.",
                 }
                 issues.append(orphan)
-            elif row_issue:
+            elif row_issue and not args.fix:
                 issues.append(row_issue)
 
         conn.commit()

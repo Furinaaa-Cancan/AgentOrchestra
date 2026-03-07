@@ -639,15 +639,13 @@ def _run_decomposed(
     from multi_agent.decompose import topo_sort_grouped
     from multi_agent.meta_graph import aggregate_results, build_sub_task_state
     from multi_agent.orchestrator import TaskStartError, start_task
-    from multi_agent.workspace import clear_runtime, release_lock, save_task_yaml
+    from multi_agent.workspace import clear_runtime, release_lock, save_task_yaml, update_task_yaml
 
     click.echo(f"🧩 Task Decomposition: {parent_task_id}")
     click.echo(f"   {requirement}")
     click.echo()
 
-    save_task_yaml(parent_task_id, {
-        "task_id": parent_task_id, "status": "active", "mode": "decompose",
-    })
+    update_task_yaml(parent_task_id, {"status": "active", "mode": "decompose"})
 
     decompose_result = _obtain_decompose_result(
         requirement, skill, builder, timeout,

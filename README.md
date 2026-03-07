@@ -61,10 +61,10 @@ my go "修复 bug" --builder claude --reviewer codex
 
 ```bash
 my session start --task task.json --mode strict
-my session pull --agent windsurf     # Windsurf 写代码
-my session push --agent windsurf --file builder.json
-my session pull --agent cursor       # Cursor 审查
-my session push --agent cursor --file reviewer.json
+my session pull --task-id <task_id> --agent windsurf     # Windsurf 写代码
+my session push --task-id <task_id> --agent windsurf --file builder.json
+my session pull --task-id <task_id> --agent cursor       # Cursor 审查
+my session push --task-id <task_id> --agent cursor --file reviewer.json
 ```
 
 但这需要你在两个 IDE 之间手动切换，效率远不如 1 IDE + N CLI 的全自动流程。
@@ -159,7 +159,8 @@ defaults:
 | `driver: cli` | 自动 spawn 终端命令 | Codex, Claude CLI, Aider |
 | `driver: gui`  | macOS AppleScript 自动控制桌面应用 | 桌面 IDE 应用 |
 
-- builder/reviewer **可以是同一 agent**（CLI/GUI 模式下自动使用不同实例）
+- `my go` 在 CLI/GUI 驱动下 builder/reviewer **可以是同一 agent**（自动使用不同实例）
+- `my session` 模式要求 builder/reviewer 必须不同 agent
 - GUI 模式需要 macOS + 辅助功能权限（系统设置 → 隐私与安全性 → 辅助功能）
 - 支持的 agent：windsurf, cursor, claude, codex, aider, antigravity, kiro
 

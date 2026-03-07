@@ -120,3 +120,35 @@ def test_lockctl_release_matches_legacy_relative_path_row(tmp_path):
     assert res.returncode == 0, res.stderr
     payload = json.loads(res.stdout)
     assert payload["status"] == "released"
+
+
+def test_lockctl_doctor_fix_uses_db_context_for_legacy_relative_path(tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "lockctl.py"
+    db = tmp_path / "locks.db"
+    file_path = tmp_path / "specs" / "task.schema.json"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text("{}", encoding="utf-8")
+
+    res = _run(
+        script,
+        ["--db", str(db), "acquire", "--task-id", "task-a", "--file-path", str(file_path), "--ttl-sec", "1800"],
+        cwd=repo_root,
+    )
+    assert res.returncode == 0, res.stderr
+
+    with sqlite3.connect(db) as conn:
+        conn.execute("UPDATE locks SET file_path = ? WHERE owner_task = ?", ("specs/task.schema.json", "task-a"))
+        conn.commit()
+
+    res = _run(script, ["--db", str(db), "doctor", "--fix"], cwd=repo_root)
+    assert res.returncode == 0, res.stdout
+    payload = json.loads(res.stdout)
+    assert payload["status"] == "ok"
+    assert any(item["type"] == "non_canonical_path" for item in payload["fixed"])
+
+    res = _run(script, ["--db", str(db), "list"], cwd=repo_root)
+    assert res.returncode == 0, res.stderr
+    listed = json.loads(res.stdout)
+    assert len(listed) == 1
+    assert listed[0]["file_path"] == str(file_path)

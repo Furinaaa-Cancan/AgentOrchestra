@@ -153,11 +153,9 @@ Ensure the CLI tool is installed and available on your `PATH`.
 
 ### Same builder and reviewer
 
-```
-Error: Reviewer cannot be the same as builder
-```
-
-Cross-model adversarial review requires different agents for builder and reviewer roles. Configure at least 2 agents.
+`my go` 行为按驱动区分：
+- `driver: cli/gui`：允许 builder/reviewer 相同（使用不同实例）
+- `driver: file`：不允许相同（会报错并要求分配不同 agent）
 
 Session mode startup also enforces this and returns:
 

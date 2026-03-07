@@ -31,7 +31,7 @@ from multi_agent.workspace import (
     read_lock,
     read_outbox,
     release_lock,
-    save_task_yaml,
+    update_task_yaml as save_task_yaml,
     validate_outbox_data,
 )
 
@@ -480,10 +480,10 @@ def _run_single_task(app: Any, task_id: str, requirement: str, skill: str, build
             click.echo("   检查 agents/agents.yaml 配置是否正确。", err=True)
         else:
             click.echo(f"❌ Task failed to start: {cause}", err=True)
-        save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(cause)})
+        save_task_yaml(task_id, {"status": "failed", "error": str(cause)})
         sys.exit(1)
 
-    save_task_yaml(task_id, {"task_id": task_id, "skill": skill, "status": "active"})
+    save_task_yaml(task_id, {"skill": skill, "status": "active"})
 
     config = _make_config(task_id)
 
@@ -602,14 +602,14 @@ def done(task_id: str | None, file_path: str | None) -> None:
         release_lock()
         clear_runtime()
         click.echo(f"❌ Graph error during resume: {e}", err=True)
-        save_task_yaml(task_id, {"task_id": task_id, "status": "failed", "error": str(e)})
+        save_task_yaml(task_id, {"status": "failed", "error": str(e)})
         sys.exit(1)
 
     # Mark task completed if graph finished
     if status.is_terminal:
         final = status.final_status or ""
         if final:
-            save_task_yaml(task_id, {"task_id": task_id, "status": final})
+            save_task_yaml(task_id, {"status": final})
         release_lock()
         clear_runtime()
 
@@ -696,7 +696,7 @@ def cancel(task_id: str | None, reason: str) -> None:
             click.echo(f"⚠️  发现孤立锁 (task: {task_id}), 正在清理…")
 
     # Mark task YAML as cancelled so auto-detect skips it
-    save_task_yaml(task_id, {"task_id": task_id, "status": "cancelled", "reason": reason})
+    save_task_yaml(task_id, {"status": "cancelled", "reason": reason})
 
     # Release lock + clean shared files
     release_lock()
