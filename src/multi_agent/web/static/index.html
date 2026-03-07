@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -186,22 +186,22 @@
         <div class="flex items-center gap-3 max-w-2xl mx-auto" id="pipeline">
           <div class="text-center flex-shrink-0">
             <div class="pipe-node"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#52525b" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg></div>
-            <div class="text-[10px] text-zinc-600 mt-2 font-medium">Plan</div>
+            <div class="text-[10px] text-zinc-600 mt-2 font-medium" data-i18n="pipe_plan">Plan</div>
           </div>
           <div class="pipe-connector"></div>
           <div class="text-center flex-shrink-0">
             <div class="pipe-node"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#52525b" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
-            <div class="text-[10px] text-zinc-600 mt-2 font-medium">Build</div>
+            <div class="text-[10px] text-zinc-600 mt-2 font-medium" data-i18n="pipe_build">Build</div>
           </div>
           <div class="pipe-connector"></div>
           <div class="text-center flex-shrink-0">
             <div class="pipe-node"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#52525b" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></div>
-            <div class="text-[10px] text-zinc-600 mt-2 font-medium">Review</div>
+            <div class="text-[10px] text-zinc-600 mt-2 font-medium" data-i18n="pipe_review">Review</div>
           </div>
           <div class="pipe-connector"></div>
           <div class="text-center flex-shrink-0">
             <div class="pipe-node"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#52525b" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg></div>
-            <div class="text-[10px] text-zinc-600 mt-2 font-medium">Decide</div>
+            <div class="text-[10px] text-zinc-600 mt-2 font-medium" data-i18n="pipe_decide">Decide</div>
           </div>
         </div>
       </div>
@@ -212,7 +212,7 @@
   <div id="status-banner" class="border-b border-surface-border bg-surface-1 hidden">
     <div class="max-w-[1400px] mx-auto px-6 py-3 flex items-center gap-3">
       <span class="w-2 h-2 rounded-full bg-ok pulse"></span>
-      <span class="text-xs text-zinc-400" id="banner-text" data-i18n="task_running">Task is running...</span>
+      <span class="text-xs text-zinc-400" id="banner-text">Task is running...</span>
     </div>
   </div>
 
@@ -250,7 +250,7 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c9a96e" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
               <span data-i18n="event_stream">Event Stream</span>
             </h2>
-            <span class="text-[10px] text-zinc-700 font-mono" id="event-count">0 events</span>
+            <span class="text-[10px] text-zinc-700 font-mono" id="event-count" data-i18n="event_count_zero">0 events</span>
           </div>
           <div id="event-timeline" class="flex-1 overflow-y-auto p-3 space-y-0.5">
             <div class="flex items-center justify-center py-16">
@@ -348,7 +348,7 @@
       </div>
       <!-- Bottom bar -->
       <div class="border-t border-surface-border pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-        <p class="text-[11px] text-zinc-700">MyGO!!!!! &copy; 2025 &mdash; Multi-agent Yielding Group Orchestra v0.8.0</p>
+        <p class="text-[11px] text-zinc-700">MyGO!!!!! &copy; 2026 &mdash; Multi-agent Yielding Group Orchestra v0.8.0</p>
         <div class="flex items-center gap-4 text-[11px] text-zinc-600">
           <a href="https://github.com/Furinaaa-Cancan/MyGO-Multi-agent_Yielding_Group_Orchestra" target="_blank" class="hover:text-zinc-400 transition">GitHub</a>
           <span class="text-zinc-800">&middot;</span>
@@ -374,6 +374,8 @@
         // Stats
         active_task: 'Active Task', total_tasks: 'Total Tasks', project: 'Project',
         workflow_pipeline: 'Workflow Pipeline',
+        pipe_plan: 'Plan', pipe_build: 'Build', pipe_review: 'Review', pipe_decide: 'Decide',
+        event_count_zero: '0 events',
         // Banner
         task_running: 'Task is running...',
         // Sections
@@ -408,6 +410,8 @@
         hero_desc: '实时监控多智能体工作流。追踪任务进度、审查事件、管理你的 AI 乐队。',
         active_task: '当前任务', total_tasks: '总任务数', project: '项目',
         workflow_pipeline: '工作流水线',
+        pipe_plan: '规划', pipe_build: '构建', pipe_review: '审查', pipe_decide: '决策',
+        event_count_zero: '0 个事件',
         task_running: '任务运行中...',
         live_dashboard: '实时仪表盘', event_stream: '事件流', task_history: '任务历史',
         no_active_task: '暂无活跃任务', waiting_events: '等待事件...', loading: '加载中...',
