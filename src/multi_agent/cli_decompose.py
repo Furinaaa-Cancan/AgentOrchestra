@@ -611,6 +611,23 @@ def _load_decompose_checkpoint(
     return prior_results, completed_ids, failed_ids
 
 
+def _close_terminals_and_cleanup(visible: bool, groups: list[list[Any]], parent_task_id: str) -> None:
+    """Close all persistent terminal windows and clean up subtask workspaces."""
+    if not visible:
+        return
+    from multi_agent.driver import close_all_visible_terminals
+    close_all_visible_terminals()
+    import time as _time
+    _time.sleep(2)  # give wrapper scripts time to see .done and exit
+
+    from multi_agent.config import subtask_workspace
+    for group in groups:
+        for st in group:
+            sid = f"{parent_task_id}-{st.id}"
+            with contextlib.suppress(OSError):
+                shutil.rmtree(str(subtask_workspace(sid)), ignore_errors=True)
+
+
 def _run_decomposed(
     app: Any,
     parent_task_id: str,
@@ -723,21 +740,7 @@ def _run_decomposed(
             )
             task_idx += len(group)
 
-    # Close all persistent terminal windows at the end of the decompose run
-    if visible:
-        from multi_agent.driver import close_all_visible_terminals
-        close_all_visible_terminals()
-        import time as _time
-        _time.sleep(2)  # give wrapper scripts time to see .done and exit
-
-        # Deferred cleanup: now that terminals have exited, safe to remove
-        # subtask workspaces that were kept alive for the wrapper scripts.
-        from multi_agent.config import subtask_workspace
-        for group in groups:
-            for st in group:
-                sid = f"{parent_task_id}-{st.id}"
-                with contextlib.suppress(OSError):
-                    shutil.rmtree(str(subtask_workspace(sid)), ignore_errors=True)
+    _close_terminals_and_cleanup(visible, groups, parent_task_id)
 
     # Phase 4: Aggregate & report
     _finalize_decompose(
