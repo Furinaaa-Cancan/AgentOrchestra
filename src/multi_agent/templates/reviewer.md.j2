@@ -27,8 +27,9 @@
 {% endif %}
 {% if builder_output.get("_empty_changeset_warning") %}
 
-### ⚠️ 空变更集警告
-Builder 报告状态为 "{{ builder_output.get('status', '?') }}" 但未列出任何修改文件。请重点验证是否确实完成了代码变更。
+### ⚠️ 空变更集提示
+Builder 报告状态为 "{{ builder_output.get('status', '?') }}" 但未列出修改文件（changed_files 为空）。
+**这不一定是问题** — 某些 CLI agent 可能省略了此字段。请自行查看实际文件变更（用 `git diff` 或直接打开文件）来判断代码是否真的被修改了。如果代码确实已修改且满足完成标准，可以 approve。
 {% endif %}
 
 ## Builder 提交的报告

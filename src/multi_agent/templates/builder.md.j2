@@ -62,7 +62,12 @@
 }
 ```
 
+### ⚠️ 重要：changed_files 是必填字段
+**必须**列出所有你新增或修改的文件的绝对路径。如果你修改了文件但 changed_files 为空，reviewer 会直接驳回。
+即使只修改了一个文件，也要填入列表中。
+
 ### ❌ 常见错误
+- **changed_files 为空** — 这是最常见的被驳回原因！修改了文件就必须列出
 - summary 写得太长或太模糊（如 "做完了"）
 - changed_files 遗漏了实际修改的文件
 - check_results 没有运行就填 "pass"
