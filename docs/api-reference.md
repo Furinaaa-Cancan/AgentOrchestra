@@ -247,11 +247,71 @@ Get prompt version and timestamp metadata.
 
 ---
 
+## git_ops
+
+### `GitConfig` / `AutoTestConfig`
+Dataclasses loaded from `.ma.yaml` `git:` and `auto_test:` sections.
+
+### `has_git() → bool`
+Check if current directory is a git repo.
+
+### `auto_commit(message, task_id=None, changed=None)`
+Stage and commit changes. Skips on detached HEAD or no changes.
+
+### `create_branch(task_id, prefix="task/") → str`
+Create and checkout a new branch.
+
+### `create_tag(tag, message) → str`
+Create annotated git tag.
+
+### `run_tests(config) → AutoTestResult`
+Run project tests, parse pass/fail counts. Returns evidence-formatted result.
+
+### `register_git_hooks()` / `register_git_hooks_override()`
+Register EventHooks for auto-commit/branch/tag. Uses closure factory pattern — config cached at registration time.
+
+### `_make_on_build_submit(cfg)` / `_make_on_decide_approve(cfg)` / `_make_on_plan_start(cfg)`
+Hook factory functions. Return closures with cached `GitConfig`.
+
+---
+
+## Web Dashboard API (Node.js / Python)
+
+### `GET /`
+Serve dashboard SPA (`static/index.html`).
+
+### `GET /api/status`
+```json
+{ "active_task": "task-xxx" | null, "root_dir": "/path", "dashboard_md": "# ..." }
+```
+
+### `GET /api/tasks`
+```json
+{ "tasks": [{ "task_id": "xxx", "status": "active", "requirement": "...", "modified": 1234567890 }], "count": 21 }
+```
+
+### `GET /api/tasks/:id`
+Returns `task_data` (YAML content) + `trace_events` (JSONL events). Validates task_id against path traversal.
+
+### `GET /api/tasks/:id/trace`
+Returns `{ "task_id": "xxx", "events": [...] }`.
+
+### `GET /api/events` (SSE)
+Server-Sent Events stream. Event types:
+- `connected` — initial connection
+- `dashboard_update` — dashboard.md changed
+- `trace_update` — new JSONL events
+- `status_update` — lock file changed
+- `heartbeat` — every 15s keepalive
+
+---
+
 ## CLI Commands
 
 | Command | Description |
 |---------|-------------|
 | `my go "req"` | Start task + auto-watch |
+| `my dashboard` | Launch Web Dashboard (Node.js primary, Python fallback) |
 | `my session start --task task.json --mode strict` | Start IDE-first session |
 | `my session status --task-id ID` | Show owner/state in session mode |
 | `my session pull --task-id ID --agent X` | Output pure IDE prompt |
@@ -263,3 +323,11 @@ Get prompt version and timestamp metadata.
 | `my render "req"` | Preview prompt (dry-run) |
 | `my init` | Initialize project structure |
 | `my history` | Show task history |
+| `my queue list file.md` | List tasks in queue file |
+| `my queue run file.md` | Execute queue tasks sequentially |
+| `my doctor` | Check workspace health |
+| `my cleanup` | Clean old workspace files |
+| `my agents` | Show agent status |
+| `my list-skills` | List available skills |
+| `my export ID` | Export task results |
+| `my version` | Show version info |
