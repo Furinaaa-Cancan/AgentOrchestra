@@ -827,6 +827,59 @@ def _auto_fix_runtime_consistency() -> list[str]:
     return actions
 
 
+# ── Web Dashboard ────────────────────────────────────────
+
+
+@main.command()
+@click.option("--port", default=8765, type=int, help="Server port")
+@click.option("--host", default="127.0.0.1", help="Bind address")
+@click.option("--open", "open_browser", is_flag=True, default=True, help="Open browser on start")
+@handle_errors
+def dashboard(port: int, host: str, open_browser: bool) -> None:
+    """Launch the web dashboard for real-time task monitoring.
+
+    Opens a browser to the dashboard UI showing live task status,
+    event stream, and task history.
+
+    Examples:
+      my dashboard
+      my dashboard --port 9000
+      my dashboard --host 0.0.0.0
+    """
+    try:
+        import uvicorn
+    except ImportError:
+        click.echo("❌ Web dashboard requires extra dependencies. Install with:", err=True)
+        click.echo("   pip install 'multi-agent[web]'", err=True)
+        sys.exit(1)
+
+    ensure_workspace()
+    url = f"http://{host}:{port}"
+    click.echo(f"🎸 MyGO Dashboard: {url}")
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        click.echo("   ⚠️  WARNING: Dashboard has no authentication. "
+                    "Binding to non-localhost exposes task data to the network.", err=True)
+    click.echo("   Press Ctrl+C to stop\n")
+
+    if open_browser:
+        import threading
+        import webbrowser
+
+        def _open():
+            import time as _t
+            _t.sleep(1.5)
+            webbrowser.open(url)
+        threading.Thread(target=_open, daemon=True).start()
+
+    uvicorn.run(
+        "multi_agent.web.server:app",
+        host=host,
+        port=port,
+        log_level="info",
+        access_log=False,
+    )
+
+
 # ── Admin commands (extracted to cli_admin.py) ──────────
 from multi_agent.cli_admin import register_admin_commands  # noqa: E402
 

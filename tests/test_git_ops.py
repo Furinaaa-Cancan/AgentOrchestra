@@ -379,9 +379,30 @@ class TestHookHandlers:
         tag_mock = MagicMock()
         monkeypatch.setattr("multi_agent.git_ops.auto_commit", commit_mock)
         monkeypatch.setattr("multi_agent.git_ops.create_tag", tag_mock)
-        _on_decide_approve({"task_id": "t1"}, {})
+        _on_decide_approve({"task_id": "t1"}, {"final_status": "approved"})
         commit_mock.assert_called_once()
         tag_mock.assert_called_once_with("task/t1", "Task t1 approved")
+
+    def test_on_decide_approve_skips_on_reject(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Bug #2 regression: must NOT commit/tag when decision is reject."""
+        monkeypatch.setattr(
+            "multi_agent.git_ops.load_git_config",
+            lambda: GitConfig(auto_commit=True, auto_tag=True, commit_on=("approve",)),
+        )
+        from multi_agent.git_ops import _on_decide_approve
+
+        commit_mock = MagicMock()
+        tag_mock = MagicMock()
+        monkeypatch.setattr("multi_agent.git_ops.auto_commit", commit_mock)
+        monkeypatch.setattr("multi_agent.git_ops.create_tag", tag_mock)
+        # reject result — should NOT trigger commit or tag
+        _on_decide_approve({"task_id": "t1"}, {"final_status": "escalated"})
+        commit_mock.assert_not_called()
+        tag_mock.assert_not_called()
+        # None result — should NOT trigger
+        _on_decide_approve({"task_id": "t1"}, None)
+        commit_mock.assert_not_called()
+        tag_mock.assert_not_called()
 
 
 # ── Hook Registration ─────────────────────────────────────

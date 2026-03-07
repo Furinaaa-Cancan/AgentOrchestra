@@ -10,6 +10,8 @@ Safety: never force-pushes, never commits on detached HEAD, checks for
 from __future__ import annotations
 
 import logging
+import re
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -254,8 +256,6 @@ def run_tests(config: AutoTestConfig | None = None) -> AutoTestResult:
     if not config.enabled:
         return AutoTestResult(passed=True, exit_code=0, summary="auto-test disabled")
 
-    import shlex
-
     cmd = shlex.split(config.command)
     _log.info("Running auto-test: %s", config.command)
 
@@ -291,7 +291,6 @@ def run_tests(config: AutoTestConfig | None = None) -> AutoTestResult:
     test_count = 0
     fail_count = 0
     # Try to extract counts from pytest output like "27 passed" or "3 failed"
-    import re
     passed_match = re.search(r"(\d+)\s+passed", summary)
     failed_match = re.search(r"(\d+)\s+failed", summary)
     if passed_match:
@@ -335,7 +334,15 @@ def _on_build_submit(state: Any, result: dict[str, Any] | None = None) -> None:
 
 
 def _on_decide_approve(state: Any, result: dict[str, Any] | None = None) -> None:
-    """Hook: auto-commit + tag after task approved."""
+    """Hook: auto-commit + tag after task approved.
+
+    IMPORTANT: This fires on ALL decide exits. Must check final_status
+    to avoid committing/tagging on reject or request_changes.
+    """
+    # Only act on actual approvals
+    if not isinstance(result, dict) or result.get("final_status") != "approved":
+        return
+
     cfg = load_git_config()
     task_id = state.get("task_id", "unknown") if isinstance(state, dict) else "unknown"
 
@@ -367,6 +374,12 @@ def _on_plan_start(state: Any) -> None:
 
 
 _hooks_registered = False
+
+
+def reset_git_hooks() -> None:
+    """Reset hook registration state. Used for testing."""
+    global _hooks_registered
+    _hooks_registered = False
 
 
 def register_git_hooks() -> None:
