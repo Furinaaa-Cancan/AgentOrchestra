@@ -37,6 +37,7 @@ from multi_agent.workspace import read_lock
 _log = logging.getLogger(__name__)
 
 _MAX_TASK_LIST = 100
+_MAX_FILE_READ = 1024 * 1024  # 1 MB cap for file reads
 _VALID_STATUSES = frozenset({"active", "approved", "done", "failed", "cancelled", "escalated", "unknown"})
 
 
@@ -149,7 +150,7 @@ def task_detail(task_id: str) -> dict[str, Any]:
         task_id: The task ID to look up (e.g. 'task-abc123')
     """
     if not _is_safe_id(task_id):
-        return {"error": f"Invalid task_id: {task_id}"}
+        return {"error": "Invalid task_id format."}
 
     task_data = _read_task_yaml(task_id)
     trace_events = _read_trace_events(task_id)
@@ -257,10 +258,13 @@ def _read_task_yaml(task_id: str) -> dict[str, Any]:
 
 
 def _read_dashboard() -> str:
-    """Read dashboard.md content."""
+    """Read dashboard.md content (capped at _MAX_FILE_READ bytes)."""
     path = workspace_dir() / "dashboard.md"
     if path.exists():
         try:
+            size = path.stat().st_size
+            if size > _MAX_FILE_READ:
+                return path.read_bytes()[:_MAX_FILE_READ].decode("utf-8", errors="replace")
             return path.read_text(encoding="utf-8")
         except Exception:
             return ""
@@ -285,7 +289,8 @@ def _read_trace_events(task_id: str) -> list[dict[str, Any]]:
         if path.exists():
             events: list[dict[str, Any]] = []
             try:
-                for line in path.read_text(encoding="utf-8").splitlines():
+                content = path.read_text(encoding="utf-8") if path.stat().st_size <= _MAX_FILE_READ else ""
+                for line in content.splitlines():
                     line = line.strip()
                     if line:
                         try:
