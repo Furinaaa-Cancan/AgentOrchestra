@@ -385,6 +385,10 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
     else:
         register_git_hooks()
 
+    # Register notification hooks (macOS native + optional webhook)
+    from multi_agent.notify import register_notify_hooks
+    register_notify_hooks()
+
     if task_id:
         _validate_task_id(task_id)
     _validate_skill_id(skill)
