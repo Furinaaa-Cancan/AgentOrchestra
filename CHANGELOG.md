@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.0] - 2026-03-08
+
+### Added
+- **MCP Server** (`mcp_server.py`) — expose MyGO as MCP service for AI tool integration
+  - 6 tools: task_status, task_list, task_detail, dashboard, task_cancel, project_info
+  - 2 resources: mygo://dashboard, mygo://status
+  - 3 rounds of security audit: path traversal prevention, file size caps, input sanitization
+- **Notification system** (`notify.py`) — macOS native notifications + webhook on task completion
+  - Triggers on approved/failed/escalated/cancelled via EventHooks
+  - Configurable via `.ma.yaml` notify: section
+- **Multi-project support** — Dashboard project switcher with backend registry
+  - /api/projects, /api/projects/add, /api/projects/switch endpoints
+  - Frontend project selector dropdown in header
+- **Task statistics** (`my stats`) — execution statistics report with node timing analysis
+- **Intelligent stderr analysis** — detect known Codex CLI error patterns (UTF-8, WebSocket, rate limit)
+- **Enhanced JSON extraction** — 3-strategy cascade for CLI agent output parsing
+  - Fenced code blocks, bare JSON objects, pure JSON, best-candidate selection
+
+### Changed
+- Claude CLI command template includes explicit JSON schema example
+- Builder prompt template strengthens changed_files requirement
+- Reviewer prompt softens empty changeset handling for CLI agents
+
+### Fixed
+- MCP Server: 12 security/functionality issues across 3 audit rounds
+- Codex CLI compatibility: reviewer no longer auto-rejects missing changed_files
+
 ## [0.8.1] - 2026-03-07
 
 ### Added
