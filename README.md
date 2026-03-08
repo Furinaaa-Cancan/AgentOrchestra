@@ -414,7 +414,7 @@ defaults:
 
 ---
 
-## Git 集成 (v0.8.1)
+## Git 集成 (v0.9.0)
 
 自动 commit、branch、tag 和测试运行，通过 EventHooks 触发，零侵入核心逻辑。
 
@@ -462,7 +462,7 @@ decide_node ──► auto_commit("approved: xxx") + auto_tag("task/xxx")
 
 ---
 
-## Web 仪表板 (v0.8.1)
+## Web 仪表板 (v0.9.0)
 
 实时任务监控 Dashboard，基于 **Node.js/Express**（主后端） + SSE + TailwindCSS。Python/uvicorn 作为降级备选。
 

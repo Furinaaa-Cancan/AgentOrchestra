@@ -33,7 +33,7 @@ _SAFE_TASK_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
 
 _log = logging.getLogger(__name__)
 
-app = FastAPI(title="MyGO Dashboard", version="0.8.0")
+app = FastAPI(title="MyGO Dashboard", version="0.9.0")
 
 # ── Static HTML ──────────────────────────────────────────
 
