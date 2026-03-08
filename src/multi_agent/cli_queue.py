@@ -58,10 +58,12 @@ def register_queue_commands(main: click.Group) -> None:  # noqa: C901
     @click.option("--timeout", default=3600, type=int, help="每个任务超时秒数")
     @click.option("--dry-run", is_flag=True, default=False, help="只预览不执行")
     @click.option("--pause", default=5, type=int, help="任务间暂停秒数")
+    @click.option("--parallel", default=1, type=int, help="并行执行数 (1=顺序, >1=并行)")
     @handle_errors
     def queue_run(
         queue_file: str, start: int, end: int, only: str | None,
         builder: str, reviewer: str, timeout: int, dry_run: bool, pause: int,
+        parallel: int,
     ) -> None:
         """执行队列文件中的任务."""
         tasks = extract_tasks_from_md(Path(queue_file))
@@ -94,7 +96,7 @@ def register_queue_commands(main: click.Group) -> None:  # noqa: C901
             click.echo(f"\n共 {len(tasks)} 条任务 (dry-run, 未执行)")
             return
 
-        results = run_queue(tasks, builder, reviewer, timeout, pause)
+        results = run_queue(tasks, builder, reviewer, timeout, pause, parallel=parallel)
         _print_summary(results)
 
         # Save results
@@ -186,39 +188,75 @@ def run_single_queue_task(
     }
 
 
+def _format_elapsed(seconds: float) -> str:
+    """Format seconds into human-readable duration."""
+    hours, rem = divmod(int(seconds), 3600)
+    mins, secs = divmod(rem, 60)
+    return f"{hours}h {mins}m {secs}s"
+
+
+def _progress_bar(done: int, total: int, width: int = 30) -> str:
+    """Render a text progress bar."""
+    pct = done / total if total > 0 else 0
+    filled = int(width * pct)
+    bar = "█" * filled + "░" * (width - filled)
+    return f"[{bar}] {done}/{total} ({pct:.0%})"
+
+
 def run_queue(
     tasks: list[tuple[int, str, str]],
     builder: str, reviewer: str, timeout: int, pause: int,
+    *, parallel: int = 1,
 ) -> dict[str, Any]:
-    """Run a list of queued tasks sequentially. Returns results summary."""
+    """Run a list of queued tasks. Returns results summary.
+
+    Args:
+        parallel: Number of concurrent tasks (1 = sequential, >1 = parallel).
+    """
     passed: list[int] = []
     failed: list[int] = []
     details: list[dict[str, Any]] = []
     start_time = time.time()
+    total = len(tasks)
 
-    for i, (num, title, prompt) in enumerate(tasks):
-        result = run_single_queue_task(num, title, prompt, builder, reviewer, timeout)
-        details.append(result)
+    if parallel > 1:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        if result["status"] == "passed":
-            passed.append(num)
-        else:
-            failed.append(num)
+        click.echo(f"🔀 并行模式: {parallel} 个任务同时执行\n")
+        futures = {}
+        with ThreadPoolExecutor(max_workers=parallel) as pool:
+            for num, title, prompt in tasks:
+                f = pool.submit(run_single_queue_task, num, title, prompt, builder, reviewer, timeout)
+                futures[f] = num
+            for f in as_completed(futures):
+                result = f.result()
+                details.append(result)
+                if result["status"] == "passed":
+                    passed.append(result["num"])
+                else:
+                    failed.append(result["num"])
+                done = len(passed) + len(failed)
+                click.echo(f"  {_progress_bar(done, total)}  #{result['num']} {result['status']}")
+    else:
+        for i, (num, title, prompt) in enumerate(tasks):
+            result = run_single_queue_task(num, title, prompt, builder, reviewer, timeout)
+            details.append(result)
+            if result["status"] == "passed":
+                passed.append(num)
+            else:
+                failed.append(num)
+            done = len(passed) + len(failed)
+            click.echo(f"  {_progress_bar(done, total)}")
+            if i < total - 1 and pause > 0:
+                time.sleep(pause)
 
-        # Pause between tasks (except after the last one)
-        if i < len(tasks) - 1 and pause > 0:
-            time.sleep(pause)
-
-    elapsed = time.time() - start_time
-    hours, rem = divmod(int(elapsed), 3600)
-    mins, secs = divmod(rem, 60)
-
+    details.sort(key=lambda d: d["num"])
     return {
         "passed": passed,
         "failed": failed,
         "details": details,
-        "elapsed": f"{hours}h {mins}m {secs}s",
-        "total": len(tasks),
+        "elapsed": _format_elapsed(time.time() - start_time),
+        "total": total,
     }
 
 
