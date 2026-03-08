@@ -1,11 +1,12 @@
 """MyGO MCP Server — expose multi-agent orchestration as MCP tools.
 
 Allows any MCP client (Claude Desktop, Cursor, Windsurf, etc.) to:
-- Start tasks (go)
-- Check status
-- Cancel tasks
-- List task history
-- Read dashboard
+- Check task status and pipeline stage
+- List task history with filtering
+- View task details and trace events
+- Read dashboard content
+- Cancel active tasks
+- Query project configuration
 
 Usage:
     # stdio transport (for IDE integration)
@@ -36,6 +37,7 @@ from multi_agent.workspace import read_lock
 _log = logging.getLogger(__name__)
 
 _MAX_TASK_LIST = 100
+_VALID_STATUSES = frozenset({"active", "approved", "done", "failed", "cancelled", "escalated", "unknown"})
 
 
 def _is_safe_id(task_id: str) -> bool:
@@ -123,8 +125,12 @@ def task_list(limit: int = 20, status_filter: str = "") -> dict[str, Any]:
         except Exception:
             continue
         task_status_val = data.get("status", "unknown")
-        if status_filter and task_status_val != status_filter:
-            continue
+        if status_filter:
+            # Whitelist valid status values
+            if status_filter not in _VALID_STATUSES:
+                continue  # invalid filter = no match
+            if task_status_val != status_filter:
+                continue
         tasks.append({
             "task_id": data.get("task_id", f.stem),
             "status": task_status_val,
@@ -178,8 +184,8 @@ def task_cancel() -> dict[str, str]:
         return {"status": "error", "message": "Invalid task_id in lock file."}
 
     try:
-        from multi_agent.workspace import release_lock, save_task_yaml
-        save_task_yaml(active, {"status": "cancelled", "task_id": active})
+        from multi_agent.workspace import release_lock, update_task_yaml
+        update_task_yaml(active, {"status": "cancelled"})
         release_lock()
         return {"status": "cancelled", "task_id": active, "message": f"Task {active} cancelled."}
     except Exception:
