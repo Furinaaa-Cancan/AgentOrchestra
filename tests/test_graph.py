@@ -270,12 +270,14 @@ class TestBuildNodeErrorDetection:
         # Should NOT have builder_output (i.e., should not proceed to reviewer)
         assert "builder_output" not in result
 
+    @patch("multi_agent.graph.load_contract")
     @patch("multi_agent.graph.write_dashboard")
     @patch("multi_agent.graph._write_task_md")
     @patch("multi_agent.graph.interrupt")
-    def test_normal_output_passes_through(self, mock_interrupt, mock_task_md, mock_dash):
+    def test_normal_output_passes_through(self, mock_interrupt, mock_task_md, mock_dash, mock_contract):
         """status=completed should proceed normally."""
         from multi_agent.graph import build_node
+        mock_contract.return_value.quality_gates = []
         mock_interrupt.return_value = {
             "status": "completed",
             "summary": "done",
@@ -557,14 +559,16 @@ class TestBuildNodeTimeout:
         assert result.get("final_status") == "failed"
         assert "TIMEOUT" in result.get("error", "")
 
+    @patch("multi_agent.graph.load_contract")
     @patch("multi_agent.graph.write_dashboard")
     @patch("multi_agent.graph._write_task_md")
     @patch("multi_agent.graph.interrupt")
-    def test_build_started_at_prevents_false_timeout(self, mock_interrupt, mock_task_md, mock_dash):
+    def test_build_started_at_prevents_false_timeout(self, mock_interrupt, mock_task_md, mock_dash, mock_contract):
         """build_started_at is recent → no timeout even if started_at is old."""
         import time as _time
 
         from multi_agent.graph import build_node
+        mock_contract.return_value.quality_gates = []
         mock_interrupt.return_value = {
             "status": "completed", "summary": "done",
             "changed_files": [], "check_results": {},
@@ -585,12 +589,14 @@ class TestBuildNodeTimeout:
         assert "builder_output" in result
         assert "error" not in result
 
+    @patch("multi_agent.graph.load_contract")
     @patch("multi_agent.graph.write_dashboard")
     @patch("multi_agent.graph._write_task_md")
     @patch("multi_agent.graph.interrupt")
-    def test_build_node_returns_build_started_at(self, mock_interrupt, mock_task_md, mock_dash):
+    def test_build_node_returns_build_started_at(self, mock_interrupt, mock_task_md, mock_dash, mock_contract):
         """build_node should return build_started_at in its result."""
         from multi_agent.graph import build_node
+        mock_contract.return_value.quality_gates = []
         mock_interrupt.return_value = {
             "status": "completed", "summary": "done",
             "changed_files": [], "check_results": {},
@@ -1068,12 +1074,14 @@ class TestPlanNodeResetsTimestamps:
         assert "review_started_at" in result
         assert result["review_started_at"] is None
 
+    @patch("multi_agent.graph.load_contract")
     @patch("multi_agent.graph.write_dashboard")
     @patch("multi_agent.graph._write_task_md")
     @patch("multi_agent.graph.interrupt")
-    def test_build_no_false_timeout_after_plan_reset(self, mock_interrupt, mock_task_md, mock_dash):
+    def test_build_no_false_timeout_after_plan_reset(self, mock_interrupt, mock_task_md, mock_dash, mock_contract):
         """After plan_node resets timestamps, build_node should not false-timeout."""
         import time as _time
+        mock_contract.return_value.quality_gates = []
         mock_interrupt.return_value = {
             "status": "completed", "summary": "done",
             "changed_files": [], "check_results": {},

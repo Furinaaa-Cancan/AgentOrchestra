@@ -110,9 +110,9 @@ _ALLOWED_WEBHOOK_SCHEMES = frozenset({"http", "https"})
 def _detect_webhook_format(url: str) -> str:
     """Auto-detect webhook format from URL."""
     url_lower = url.lower()
-    if "hooks.slack.com" in url_lower or "slack" in url_lower:
+    if "hooks.slack.com" in url_lower:
         return "slack"
-    if "discord.com/api/webhooks" in url_lower or "discordapp.com" in url_lower:
+    if "discord.com/api/webhooks" in url_lower or "discordapp.com/api/webhooks" in url_lower:
         return "discord"
     return "generic"
 

@@ -308,3 +308,19 @@ app.use("/api", (req, res, next) => {
 **原因**: 添加 write tools 时引入了 `contextlib` 但实际没有使用。
 **修复**: 删除 `import contextlib`。
 **教训**: **每次修改后检查 unused imports。**
+
+---
+
+## 十一、v0.12.0 Code Review 发现的 Bug（2 个）
+
+### E34: test_graph.py 4 个测试缺少 load_contract mock
+**文件**: `tests/test_graph.py`
+**原因**: `build_node` 成功路径调用 `_enrich_builder_result` → `load_contract(skill_id)`，但 4 个测试未 mock 此函数，导致在 temp 目录找不到 contract 文件。
+**修复**: 为 4 个测试添加 `@patch("multi_agent.graph.load_contract")` 并设置 `quality_gates=[]`。
+**教训**: **当被测函数的执行路径变长时，需要审查所有相关测试是否 mock 了新增的外部依赖。**
+
+### E35: _detect_webhook_format 匹配范围过宽
+**文件**: `notify.py` `_detect_webhook_format()`
+**原因**: `"slack" in url_lower` 会匹配任何包含 "slack" 的 URL（如 `example.com/slack-alternative`），导致误判。
+**修复**: 只匹配 `hooks.slack.com` 和 `discord.com/api/webhooks`。
+**教训**: **URL 格式检测要匹配具体域名，不要用通用子串匹配。**
