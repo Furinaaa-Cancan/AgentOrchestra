@@ -247,8 +247,48 @@ app.use("/api", (req, res, next) => {
 **修复**: `crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))` 恒定时间比较。
 **教训**: **密钥/token 比较永远用 timing-safe 函数，即使是本地工具。**
 
-### E25: Token 掩码溢出
+### E25: Token 掩码溢出 (v0.9.2)
 **文件**: `cli.py` `_launch_dashboard_node()`
 **原因**: `token[:4] + '*' * (len(token) - 4)` — 当 token 长度 < 4 时，负数乘法产生空字符串，直接暴露全部 token。
 **修复**: `if len(token) > 4 else "****"` — 短 token 全部掩码。
 **教训**: **字符串切片和掩码操作要考虑边界长度。**
+
+---
+
+## 九、v0.10.0 Code Review 发现的 Bug（6 个）
+
+### E26: 用户输入字段无长度限制
+**文件**: `app.js` + `server.py` actions 端点
+**原因**: `reason`/`feedback`/`summary` 字段直接写入磁盘（YAML/JSON），无长度上限，攻击者可发送 1MB 字符串。
+**修复**: `.slice(0, 500)` / `.slice(0, 2000)` 限制各字段长度。
+**教训**: **所有写入磁盘的用户输入都要有长度上限，即使 body parser 有全局限制。**
+
+### E27: Starlette CORS 不支持通配符端口
+**文件**: `server.py` CORSMiddleware
+**原因**: `allow_origins=["http://localhost:*"]` — Starlette 的 CORS 中间件不支持 glob 模式，`*` 不会匹配端口号。
+**修复**: 改用 `allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"`。
+**教训**: **不同框架的 CORS 配置语法不同，Express 和 Starlette 的 origin 匹配机制完全不一样。**
+
+### E28: semantic_memory.py 内容无长度限制
+**文件**: `semantic_memory.py` `store()`
+**原因**: `content` 参数无最大长度检查，可能存入超大文本条目。
+**修复**: `if len(content) > _MAX_CONTENT_LENGTH: content = content[:_MAX_CONTENT_LENGTH]`
+**教训**: **存储层的每个字段都要有大小上限。**
+
+### E29: _load_entries() 重复 stat 调用
+**文件**: `semantic_memory.py`
+**原因**: `path.stat().st_size` 调用两次（检查 + 日志），浪费 I/O 且存在 TOCTOU 风险。
+**修复**: `file_size = path.stat().st_size` 存到变量复用。
+**教训**: **文件元数据操作结果要缓存到局部变量。**
+
+### E30: 未使用的 import
+**文件**: `semantic_memory.py` (`os`)、`server.py` (`hashlib`)
+**原因**: 复制粘贴遗留的死代码。
+**修复**: 删除未使用的 import。
+**教训**: **每次新建模块后跑 `ruff` 检查 unused imports。**
+
+### E31: 文档声称支持 OpenAI embeddings 但未实现
+**文件**: `semantic_memory.py` docstring
+**原因**: 模块注释提到"Optionally supports OpenAI embeddings"但代码中没有实现。
+**修复**: 删除误导性文档。
+**教训**: **docstring 必须与实际实现一致，不能写"计划实现"的功能。**

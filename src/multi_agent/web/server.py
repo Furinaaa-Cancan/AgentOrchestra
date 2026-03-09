@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import hashlib
 import hmac
 import json
 import logging
@@ -75,7 +74,7 @@ async def auth_middleware(request: Request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:*", "http://127.0.0.1:*"],
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_methods=["*"],
     allow_headers=["Content-Type", "Authorization"],
 )
@@ -322,7 +321,7 @@ async def api_action_cancel(request: Request) -> JSONResponse:
     task_id = body.get("task_id", "")
     if not task_id or not _validate_web_task_id(task_id):
         return JSONResponse({"error": "invalid or missing task_id"}, status_code=400)
-    reason = body.get("reason", "cancelled from dashboard")
+    reason = (body.get("reason", "cancelled from dashboard") or "")[:500]
     ws = workspace_dir()
     tasks_path = ws / "tasks"
     tasks_path.mkdir(parents=True, exist_ok=True)
@@ -361,8 +360,9 @@ async def api_action_review(request: Request) -> JSONResponse:
     decision = body.get("decision", "")
     if decision not in ("approve", "reject", "request_changes"):
         return JSONResponse({"error": "decision must be approve, reject, or request_changes"}, status_code=400)
-    feedback = body.get("feedback", "") or ("Approved from Dashboard" if decision == "approve" else "Rejected from Dashboard")
-    summary = body.get("summary", "") or f"Review {decision} via Dashboard"
+    raw_feedback = (body.get("feedback", "") or "")[:2000]
+    feedback = raw_feedback or ("Approved from Dashboard" if decision == "approve" else "Rejected from Dashboard")
+    summary = ((body.get("summary", "") or "")[:500]) or f"Review {decision} via Dashboard"
     ws = workspace_dir()
     outbox = ws / "outbox"
     outbox.mkdir(parents=True, exist_ok=True)

@@ -4,9 +4,6 @@ Stores structured memory entries (architectural decisions, code patterns,
 conventions, preferences) and retrieves them via TF-IDF cosine similarity.
 
 Storage: ``.multi-agent/memory/semantic.jsonl``
-
-Optionally supports OpenAI embeddings when OPENAI_API_KEY is set,
-falling back to built-in TF-IDF for zero-dependency operation.
 """
 
 from __future__ import annotations
@@ -15,7 +12,6 @@ import hashlib
 import json
 import logging
 import math
-import os
 import re
 import time
 from collections import Counter
@@ -36,6 +32,7 @@ _log = logging.getLogger(__name__)
 
 _MAX_MEMORY_FILE_SIZE = 20 * 1024 * 1024  # 20 MB cap
 _MAX_ENTRIES = 5000
+_MAX_CONTENT_LENGTH = 2000
 _DEFAULT_TOP_K = 5
 
 # Memory entry categories
@@ -90,6 +87,8 @@ def store(
     content = content.strip()
     if not content:
         return {"status": "error", "reason": "empty content"}
+    if len(content) > _MAX_CONTENT_LENGTH:
+        content = content[:_MAX_CONTENT_LENGTH]
 
     if category not in CATEGORIES:
         category = "general"
@@ -141,8 +140,9 @@ def _load_entries() -> list[dict[str, Any]]:
     if not path.exists():
         return []
     try:
-        if path.stat().st_size > _MAX_MEMORY_FILE_SIZE:
-            _log.warning("Semantic memory file too large: %d bytes", path.stat().st_size)
+        file_size = path.stat().st_size
+        if file_size > _MAX_MEMORY_FILE_SIZE:
+            _log.warning("Semantic memory file too large: %d bytes", file_size)
             return []
     except OSError:
         return []

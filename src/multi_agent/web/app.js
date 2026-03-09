@@ -463,7 +463,7 @@ app.post("/api/actions/cancel", (req, res) => {
   if (!taskId || !isValidTaskId(taskId)) {
     return res.status(400).json({ error: "invalid or missing task_id" });
   }
-  const reason = req.body.reason || "cancelled from dashboard";
+  const reason = (req.body.reason || "cancelled from dashboard").slice(0, 500);
 
   // Write cancel status to task YAML
   const tasksDir = path.join(wsDir, "tasks");
@@ -509,8 +509,8 @@ app.post("/api/actions/cancel", (req, res) => {
 
 app.post("/api/actions/review", (req, res) => {
   const decision = req.body.decision; // "approve" or "reject"
-  const feedback = req.body.feedback || "";
-  const summary = req.body.summary || "";
+  const feedback = (req.body.feedback || "").slice(0, 2000);
+  const summary = (req.body.summary || "").slice(0, 500);
 
   if (!["approve", "reject", "request_changes"].includes(decision)) {
     return res.status(400).json({ error: "decision must be approve, reject, or request_changes" });
