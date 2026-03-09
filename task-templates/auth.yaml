@@ -1,0 +1,9 @@
+id: auth
+name: "用户认证模块"
+description: "实现完整的用户认证系统，包括注册、登录、JWT 管理"
+requirement: "实现用户认证模块：1) POST /register 用户注册（密码 bcrypt 加密）2) POST /login 登录并返回 JWT token 3) GET /me 获取当前用户信息（需 Bearer token）4) 中间件验证 JWT 并注入 user 到请求上下文。使用 ${framework} 框架。"
+skill: code-implement
+decompose: true
+tags: [backend, auth, security]
+variables:
+  framework: "FastAPI"

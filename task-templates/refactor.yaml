@@ -1,0 +1,10 @@
+id: refactor
+name: "代码重构"
+description: "对指定模块进行重构优化"
+requirement: "重构 ${target_module}：1) 分析当前代码结构和问题 2) 提出重构方案 3) 实现重构（保持接口兼容）4) 确保所有现有测试通过 5) 更新相关文档。重构目标: ${goal}。"
+skill: code-implement
+decompose: false
+tags: [refactor, maintenance, quality]
+variables:
+  target_module: "请通过 --var target_module='...' 指定模块"
+  goal: "提升可读性和可维护性"

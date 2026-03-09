@@ -1,0 +1,10 @@
+id: crud
+name: "CRUD API"
+description: "为指定模型生成完整的 CRUD RESTful API"
+requirement: "为 ${model} 模型实现完整的 CRUD RESTful API：1) GET /${endpoint} 列表查询（支持分页）2) GET /${endpoint}/{id} 详情 3) POST /${endpoint} 创建 4) PUT /${endpoint}/{id} 更新 5) DELETE /${endpoint}/{id} 删除。包含输入验证、错误处理、单元测试。"
+skill: code-implement
+decompose: true
+tags: [backend, api, crud]
+variables:
+  model: "Item"
+  endpoint: "items"

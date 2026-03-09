@@ -334,7 +334,9 @@ def _ensure_no_active_task(app: Any) -> None:
 
 
 @main.command()
-@click.argument("requirement")
+@click.argument("requirement", required=False, default=None)
+@click.option("--template", "template_id", default=None, help="Task template ID (e.g. auth, crud, bugfix)")
+@click.option("--var", "var_args", multiple=True, help="Template variable override (key=value), repeatable")
 @click.option("--skill", default="code-implement", help="Skill ID to use")
 @click.option("--task-id", default=None, help="Override task ID")
 @click.option("--builder", default="", help="IDE for builder role (e.g. windsurf, cursor, kiro)")
@@ -351,7 +353,7 @@ def _ensure_no_active_task(app: Any) -> None:
 @click.option("--mode", default="strict", help="Workmode profile 名称")
 @click.option("--config", "mode_config_path", default="config/workmode.yaml", help="Workmode 配置路径")
 @handle_errors
-def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer: str, retry_budget: int, timeout: int, no_watch: bool, decompose: bool, auto_confirm: bool, decompose_file: str | None, no_cache: bool, visible: bool, git_commit: bool, mode: str, mode_config_path: str) -> None:
+def go(requirement: str | None, template_id: str | None, var_args: tuple[str, ...], skill: str, task_id: str | None, builder: str, reviewer: str, retry_budget: int, timeout: int, no_watch: bool, decompose: bool, auto_confirm: bool, decompose_file: str | None, no_cache: bool, visible: bool, git_commit: bool, mode: str, mode_config_path: str) -> None:
     """Start a new task and watch for IDE output.
 
     Starts the task, then auto-watches outbox/ for agent output.
@@ -367,9 +369,61 @@ def go(requirement: str, skill: str, task_id: str | None, builder: str, reviewer
       my go "Add auth middleware" --builder windsurf --reviewer cursor
       my go "Fix login bug" --no-watch
       my go "实现完整用户认证模块" --decompose
+      my go --template auth
+      my go --template crud --var model=User --var endpoint=users
     """
     from multi_agent.config import load_project_config
     from multi_agent.graph import compile_graph
+
+    # ── Template resolution ──────────────────────────────
+    if template_id:
+        from multi_agent.task_templates import (
+            TemplateNotFoundError,
+            TemplateValidationError,
+            load_template,
+            parse_var_args,
+            resolve_variables,
+        )
+        try:
+            tmpl = load_template(template_id)
+            var_overrides = parse_var_args(var_args) if var_args else {}
+            tmpl = resolve_variables(tmpl, var_overrides)
+        except TemplateNotFoundError as e:
+            click.echo(f"❌ {e}", err=True)
+            sys.exit(1)
+        except TemplateValidationError as e:
+            click.echo(f"❌ {e}", err=True)
+            sys.exit(1)
+        except ValueError as e:
+            click.echo(f"❌ --var 格式错误: {e}", err=True)
+            sys.exit(1)
+
+        # Template fields fill in defaults; CLI flags still override
+        requirement = requirement or tmpl.requirement
+        if skill == "code-implement" and tmpl.skill:
+            skill = tmpl.skill
+        if not builder and tmpl.builder:
+            builder = tmpl.builder
+        if not reviewer and tmpl.reviewer:
+            reviewer = tmpl.reviewer
+        if retry_budget == 2 and tmpl.retry_budget != 2:
+            retry_budget = tmpl.retry_budget
+        if timeout == 1800 and tmpl.timeout != 1800:
+            timeout = tmpl.timeout
+        if mode == "strict" and tmpl.mode != "strict":
+            mode = tmpl.mode
+        if not decompose and tmpl.decompose:
+            decompose = True
+
+        click.echo(f"📋 Template: {tmpl.name} ({tmpl.id})")
+        if tmpl.description:
+            click.echo(f"   {tmpl.description}")
+        click.echo()
+
+    if not requirement:
+        click.echo("❌ 请提供 requirement 参数或使用 --template。", err=True)
+        click.echo("   示例: my go \"实现用户登录\"  or  my go --template auth", err=True)
+        sys.exit(1)
 
     ensure_workspace()
 
@@ -829,6 +883,100 @@ def _auto_fix_runtime_consistency() -> list[str]:
         return actions
 
     return actions
+
+
+# ── Task Templates ────────────────────────────────────────
+
+
+@main.group()
+def template() -> None:
+    """任务模板管理（列表、查看、创建）."""
+
+
+@template.command("list")
+@handle_errors
+def template_list() -> None:
+    """列出所有可用的任务模板.
+
+    Examples:
+      my template list
+    """
+    from multi_agent.task_templates import list_templates
+
+    templates = list_templates()
+    if not templates:
+        click.echo("📭 没有找到任务模板。")
+        click.echo("   在 task-templates/ 目录下创建 YAML 文件即可。")
+        return
+
+    click.echo(f"📋 可用模板 ({len(templates)} 个):\n")
+    for tmpl in templates:
+        tags = " ".join(f"[{t}]" for t in tmpl.tags) if tmpl.tags else ""
+        decompose_flag = " 🔀decompose" if tmpl.decompose else ""
+        click.echo(f"  {tmpl.id:<16} {tmpl.name}{decompose_flag}")
+        if tmpl.description:
+            click.echo(f"  {'':16} {tmpl.description}")
+        if tags:
+            click.echo(f"  {'':16} {tags}")
+        if tmpl.variables:
+            vars_str = ", ".join(f"{k}={v}" for k, v in tmpl.variables.items())
+            click.echo(f"  {'':16} 变量: {vars_str}")
+        click.echo()
+
+    click.echo("使用方法: my go --template <id> [--var key=value ...]")
+
+
+@template.command("show")
+@click.argument("template_id")
+@handle_errors
+def template_show(template_id: str) -> None:
+    """查看模板详情.
+
+    Examples:
+      my template show auth
+      my template show crud
+    """
+    from multi_agent.task_templates import (
+        TemplateNotFoundError,
+        TemplateValidationError,
+        load_template,
+    )
+
+    try:
+        tmpl = load_template(template_id)
+    except (TemplateNotFoundError, TemplateValidationError) as e:
+        click.echo(f"❌ {e}", err=True)
+        sys.exit(1)
+
+    click.echo(f"📋 模板: {tmpl.name} ({tmpl.id})")
+    click.echo(f"   描述:     {tmpl.description or '(无)'}")
+    click.echo(f"   技能:     {tmpl.skill}")
+    click.echo(f"   分解模式: {'是' if tmpl.decompose else '否'}")
+    click.echo(f"   重试次数: {tmpl.retry_budget}")
+    click.echo(f"   超时:     {tmpl.timeout}s")
+    if tmpl.builder:
+        click.echo(f"   Builder:  {tmpl.builder}")
+    if tmpl.reviewer:
+        click.echo(f"   Reviewer: {tmpl.reviewer}")
+    if tmpl.mode != "strict":
+        click.echo(f"   模式:     {tmpl.mode}")
+    if tmpl.tags:
+        click.echo(f"   标签:     {', '.join(tmpl.tags)}")
+    if tmpl.source_path:
+        click.echo(f"   来源:     {tmpl.source_path}")
+
+    click.echo()
+    click.echo("📝 Requirement:")
+    click.echo(f"   {tmpl.requirement}")
+
+    if tmpl.variables:
+        click.echo()
+        click.echo("🔧 变量 (可通过 --var 覆盖):")
+        for k, v in tmpl.variables.items():
+            click.echo(f"   ${{{k}}} = {v}")
+
+    click.echo()
+    click.echo(f"启动: my go --template {tmpl.id}")
 
 
 # ── Web Dashboard ────────────────────────────────────────

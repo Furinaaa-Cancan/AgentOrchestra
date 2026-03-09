@@ -1,0 +1,10 @@
+id: bugfix
+name: "Bug 修复"
+description: "定位并修复指定的 bug"
+requirement: "修复 bug: ${bug_description}。要求：1) 分析根因 2) 编写回归测试 3) 实现最小化修复 4) 验证修复不引入新问题。"
+skill: code-implement
+decompose: false
+retry_budget: 3
+tags: [bugfix, maintenance]
+variables:
+  bug_description: "请通过 --var bug_description='...' 指定 bug 描述"

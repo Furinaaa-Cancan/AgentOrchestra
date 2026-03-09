@@ -1,0 +1,11 @@
+id: test
+name: "测试补全"
+description: "为指定模块补充单元测试和集成测试"
+requirement: "为 ${target_module} 补充测试：1) 分析现有测试覆盖情况 2) 编写缺失的单元测试 3) 添加边界条件和异常路径测试 4) 确保测试覆盖率达到 ${coverage}% 以上。使用 ${test_framework} 测试框架。"
+skill: code-implement
+decompose: false
+tags: [testing, quality]
+variables:
+  target_module: "请通过 --var target_module='...' 指定模块"
+  coverage: "80"
+  test_framework: "pytest"
