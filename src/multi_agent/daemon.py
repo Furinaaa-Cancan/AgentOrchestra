@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import signal
 import time
 from enum import Enum

@@ -362,3 +362,13 @@ app.use("/api", (req, res, next) => {
 **原因**: `from multi_agent.config import load_project_config` 导入后未使用。
 **修复**: 删除。
 **教训**: **每次写完函数后检查 unused imports。**
+
+---
+
+## 十四、v0.16.0 Code Review 发现的 Bug（1 个）
+
+### E41: daemon.py 未使用的 os import
+**文件**: `daemon.py`
+**原因**: `import os` 导入后从未使用。
+**修复**: 删除。
+**教训**: **同 E39，新模块不要复制多余 import。**
