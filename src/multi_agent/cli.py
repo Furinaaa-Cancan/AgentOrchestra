@@ -376,6 +376,8 @@ def go(requirement: str | None, template_id: str | None, var_args: tuple[str, ..
     from multi_agent.graph import compile_graph
 
     # ── Template resolution ──────────────────────────────
+    if var_args and not template_id:
+        click.echo("⚠️  --var 仅在 --template 模式下有效，已忽略。", err=True)
     if template_id:
         from multi_agent.task_templates import (
             TemplateNotFoundError,
@@ -414,6 +416,9 @@ def go(requirement: str | None, template_id: str | None, var_args: tuple[str, ..
             mode = tmpl.mode
         if not decompose and tmpl.decompose:
             decompose = True
+
+        # Validate skill from template
+        _validate_skill_id(skill)
 
         click.echo(f"📋 Template: {tmpl.name} ({tmpl.id})")
         if tmpl.description:
@@ -963,7 +968,12 @@ def template_show(template_id: str) -> None:
     if tmpl.tags:
         click.echo(f"   标签:     {', '.join(tmpl.tags)}")
     if tmpl.source_path:
-        click.echo(f"   来源:     {tmpl.source_path}")
+        try:
+            from multi_agent.config import root_dir
+            rel = tmpl.source_path.relative_to(root_dir())
+            click.echo(f"   来源:     {rel}")
+        except (ValueError, Exception):
+            click.echo(f"   来源:     {tmpl.source_path.name}")
 
     click.echo()
     click.echo("📝 Requirement:")

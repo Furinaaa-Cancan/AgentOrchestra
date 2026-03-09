@@ -36,6 +36,10 @@ _KNOWN_FIELDS = frozenset({
     "decompose", "tags", "variables",
 })
 
+_MAX_TEMPLATE_FILE_SIZE = 64 * 1024  # 64 KB cap per template file
+
+_SAFE_SKILL_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
+
 
 # ── Exceptions ───────────────────────────────────────────
 
@@ -124,6 +128,16 @@ def _validate_template_data(data: dict[str, Any], path: Path | None = None) -> l
     if "variables" in data and not isinstance(data["variables"], dict):
         errors.append(f"'variables' must be a mapping{ctx}")
 
+    # Validate skill format if present
+    skill = data.get("skill", "")
+    if skill and not _SAFE_SKILL_ID_RE.match(str(skill)):
+        errors.append(f"Invalid skill '{skill}'{ctx}")
+
+    # Warn about unknown fields
+    unknown = set(data.keys()) - _KNOWN_FIELDS
+    if unknown:
+        errors.append(f"Unknown fields: {', '.join(sorted(unknown))}{ctx}")
+
     if "retry_budget" in data:
         rb = data["retry_budget"]
         if not isinstance(rb, int) or rb < 0 or rb > 20:
@@ -148,14 +162,19 @@ def _template_dirs() -> list[Path]:
     if primary.is_dir():
         dirs.append(primary)
 
-    # Additional dirs from .ma.yaml
+    # Additional dirs from .ma.yaml (must stay within project root)
     proj = load_project_config()
     extra = proj.get("template_dirs")
+    project_root = root_dir().resolve()
     if isinstance(extra, list):
         for d in extra:
             p = Path(d) if Path(d).is_absolute() else root_dir() / d
-            if p.is_dir():
-                dirs.append(p.resolve())
+            resolved = p.resolve()
+            # Prevent path traversal outside project root
+            if not str(resolved).startswith(str(project_root)):
+                continue
+            if resolved.is_dir():
+                dirs.append(resolved)
 
     return dirs
 
@@ -189,6 +208,14 @@ def load_template(template_id: str) -> TaskTemplate:
 def _load_template_file(path: Path) -> TaskTemplate:
     """Parse and validate a single template YAML file."""
     try:
+        fsize = path.stat().st_size
+    except OSError as e:
+        raise TemplateValidationError(f"Cannot stat {path}: {e}") from e
+    if fsize > _MAX_TEMPLATE_FILE_SIZE:
+        raise TemplateValidationError(
+            f"Template file too large: {path} ({fsize} bytes > {_MAX_TEMPLATE_FILE_SIZE})"
+        )
+    try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as e:
         raise TemplateValidationError(f"YAML parse error in {path}: {e}") from e
@@ -214,7 +241,7 @@ def list_templates() -> list[TaskTemplate]:
         for path in sorted(tdir.glob("*.yaml")) + sorted(tdir.glob("*.yml")):
             try:
                 tmpl = _load_template_file(path)
-            except (TemplateValidationError, Exception):
+            except (TemplateValidationError, yaml.YAMLError, OSError):
                 continue
             if tmpl.id not in seen_ids:
                 seen_ids.add(tmpl.id)

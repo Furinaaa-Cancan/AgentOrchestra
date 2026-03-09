@@ -283,3 +283,59 @@ class TestValidation:
             "variables": ["not", "a", "dict"],
         })
         assert any("variables" in e for e in errors)
+
+    def test_invalid_skill(self, templates_dir: Path) -> None:
+        from multi_agent.task_templates import _validate_template_data
+
+        errors = _validate_template_data({
+            "id": "t", "name": "T", "requirement": "R",
+            "skill": "../evil",
+        })
+        assert any("skill" in e.lower() or "Invalid" in e for e in errors)
+
+    def test_unknown_fields(self, templates_dir: Path) -> None:
+        from multi_agent.task_templates import _validate_template_data
+
+        errors = _validate_template_data({
+            "id": "t", "name": "T", "requirement": "R",
+            "bogus_field": True,
+        })
+        assert any("Unknown" in e for e in errors)
+
+
+# ── File size cap ─────────────────────────────────
+
+
+class TestFileSizeCap:
+    def test_oversized_file_rejected(self, templates_dir: Path) -> None:
+        from multi_agent.task_templates import TemplateValidationError, _load_template_file
+
+        big_file = templates_dir / "big.yaml"
+        big_file.write_text("x" * (65 * 1024), encoding="utf-8")  # > 64 KB
+        with pytest.raises(TemplateValidationError, match="too large"):
+            _load_template_file(big_file)
+
+
+# ── Path traversal prevention ───────────────────
+
+
+class TestPathTraversal:
+    def test_template_dirs_rejects_outside_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from multi_agent.task_templates import _template_dirs
+
+        root = tmp_path / "project"
+        root.mkdir()
+        outside = tmp_path / "outside-templates"
+        outside.mkdir()
+
+        monkeypatch.setattr("multi_agent.task_templates.root_dir", lambda: root)
+        monkeypatch.setattr(
+            "multi_agent.task_templates.load_project_config",
+            lambda: {"template_dirs": [str(outside)]},
+        )
+
+        dirs = _template_dirs()
+        # outside dir should NOT be included
+        assert outside.resolve() not in dirs
