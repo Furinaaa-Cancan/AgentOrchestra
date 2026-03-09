@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.2] - 2026-03-09
+
+### Added
+- **Web Dashboard Authentication** — optional token-based auth for API/SSE
+  - `app.js`: Bearer token middleware on all `/api/*` routes (env `MYGO_AUTH_TOKEN` or `--token` CLI arg)
+  - `app.js`: `/api/auth/check` + `/api/auth/login` endpoints for frontend handshake
+  - `app.js`: SSE accepts token via query param (`?token=xxx`) since EventSource can't set headers
+  - `index.html`: Login overlay UI with token input, `localStorage` persistence, `authFetch()` wrapper
+  - `cli.py`: `my dashboard --token auto` generates random token; `--token <value>` for explicit token
+  - Token resolution chain: CLI flag → `MYGO_AUTH_TOKEN` env var → `.ma.yaml` `dashboard.token` → disabled
+  - CORS `Access-Control-Allow-Headers` updated to include `Authorization`
+- **Cross-platform `--visible` terminal support** — Windows & Linux
+  - `driver.py`: `_detect_terminal_emulator()` — platform-aware detection
+  - macOS: Terminal.app via AppleScript (existing, refactored)
+  - Windows: Windows Terminal (`wt.exe`) or `cmd.exe` with `.bat` wrapper calling Git Bash/WSL
+  - Linux: gnome-terminal, konsole, xfce4-terminal, xterm (first available)
+  - Graceful fallback to headless CLI if no terminal emulator found
+- **FinOps — Token usage tracking & cost reporting**
+  - New module `finops.py`: persistent JSONL logging, cost estimation, aggregation, budget alerts
+  - `graph.py`: build + review nodes persist token usage to `logs/token-usage.jsonl`
+  - `cli_admin.py`: `my finops` command — human-readable report or `--json` output
+  - `app.js`: `/api/finops` endpoint aggregating token usage for Dashboard
+  - `index.html`: FinOps cost panel (total tokens, cost, per-node breakdown)
+  - Default pricing for GPT-4o/4.1/o3/o4-mini, Claude Sonnet/Haiku, Codex
+  - `.ma.yaml` `finops.budget_usd` / `finops.budget_tokens` budget alert config
+  - `config.py`: `dashboard` and `finops` added to `VALID_CONFIG_KEYS`
+- **24 new tests** — FinOps module, cross-platform terminal detection, dashboard auth CLI option
+
 ## [0.9.1] - 2026-03-09
 
 ### Security

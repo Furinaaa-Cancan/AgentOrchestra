@@ -97,6 +97,25 @@
 </head>
 <body class="min-h-screen flex flex-col">
 
+  <!-- ════════════ LOGIN OVERLAY ════════════ -->
+  <div id="login-overlay" class="hidden fixed inset-0 z-[100] bg-surface-0 flex items-center justify-center">
+    <div class="w-full max-w-sm mx-4">
+      <div class="card p-8 text-center">
+        <div class="w-12 h-12 rounded-xl bg-brand/10 flex items-center justify-center border border-brand/20 mx-auto mb-4">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M9 18V10l6 4-6 4z" fill="#c9a96e"/><circle cx="12" cy="12" r="10" stroke="#c9a96e" stroke-width="1.5" fill="none"/></svg>
+        </div>
+        <h2 class="text-lg font-bold text-white mb-1">MyGO<span class="text-brand">!!!!!</span> Dashboard</h2>
+        <p class="text-xs text-zinc-500 mb-6">Enter your access token to continue</p>
+        <form onsubmit="handleLogin(event)">
+          <input id="login-token" type="password" placeholder="Access Token" autocomplete="off"
+            class="w-full h-10 px-4 rounded-lg text-sm bg-surface-2 text-zinc-200 border border-surface-border focus:border-brand/40 focus:outline-none placeholder:text-zinc-600 mb-3">
+          <button type="submit" class="w-full h-10 rounded-lg text-sm font-medium bg-brand text-surface-0 hover:bg-brand-light transition">Login</button>
+        </form>
+        <p id="login-error" class="text-err text-xs mt-3 hidden">Invalid token</p>
+      </div>
+    </div>
+  </div>
+
   <!-- ════════════ HEADER ════════════ -->
   <header class="sticky top-0 z-50 border-b border-surface-border bg-surface-0/90 backdrop-blur-xl">
     <div class="max-w-[1400px] mx-auto px-6 h-14 flex items-center justify-between">
@@ -263,6 +282,25 @@
           </div>
         </section>
       </div>
+
+      <!-- FinOps Cost Panel -->
+      <section id="finops-section" class="card p-0 overflow-hidden">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-surface-border">
+          <h2 class="text-xs font-semibold text-zinc-300 uppercase tracking-widest flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c9a96e" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+            FinOps
+          </h2>
+          <span class="text-[10px] text-zinc-700 font-mono" id="finops-records">--</span>
+        </div>
+        <div class="p-5">
+          <div class="grid grid-cols-3 gap-4 mb-4">
+            <div><div class="section-label mb-1">Total Tokens</div><div class="text-lg font-bold text-white" id="finops-tokens">0</div></div>
+            <div><div class="section-label mb-1">Cost (USD)</div><div class="text-lg font-bold text-ok" id="finops-cost">$0.00</div></div>
+            <div><div class="section-label mb-1">Tasks</div><div class="text-lg font-bold text-white" id="finops-tasks">0</div></div>
+          </div>
+          <div id="finops-breakdown" class="text-xs text-zinc-500 space-y-1"></div>
+        </div>
+      </section>
 
       <!-- Task History -->
       <section id="tasks-section" class="card p-0 overflow-hidden">
@@ -466,21 +504,113 @@
       document.getElementById('event-count').textContent = tf('events_count', allEvents.length);
     }
 
-    // ── State ─────────────────────────────
+    // ── Auth ─────────────────────────
+    let authToken = localStorage.getItem('mygo-auth-token') || '';
+    let authRequired = false;
+
+    function getAuthHeaders() {
+      const h = { 'Content-Type': 'application/json' };
+      if (authToken) h['Authorization'] = `Bearer ${authToken}`;
+      return h;
+    }
+
+    function authFetch(url, opts = {}) {
+      opts.headers = { ...getAuthHeaders(), ...(opts.headers || {}) };
+      return fetch(url, opts).then(r => {
+        if (r.status === 401) { showLoginOverlay(); throw new Error('Unauthorized'); }
+        return r;
+      });
+    }
+
+    function showLoginOverlay() {
+      document.getElementById('login-overlay').classList.remove('hidden');
+    }
+
+    function hideLoginOverlay() {
+      document.getElementById('login-overlay').classList.add('hidden');
+      document.getElementById('login-error').classList.add('hidden');
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const token = document.getElementById('login-token').value.trim();
+      if (!token) return;
+      try {
+        const r = await fetch('/api/auth/login', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ token })
+        });
+        const d = await r.json();
+        if (d.ok) {
+          authToken = token;
+          localStorage.setItem('mygo-auth-token', token);
+          hideLoginOverlay();
+          refreshAll(); connectSSE(); fetchProjects();
+        } else {
+          document.getElementById('login-error').classList.remove('hidden');
+        }
+      } catch (err) {
+        document.getElementById('login-error').classList.remove('hidden');
+      }
+    }
+
+    async function checkAuth() {
+      try {
+        const r = await fetch('/api/auth/check');
+        const d = await r.json();
+        authRequired = d.auth_required;
+        if (!authRequired) return true;
+        // Verify stored token works
+        if (authToken) {
+          const r2 = await fetch('/api/status', { headers: getAuthHeaders() });
+          if (r2.ok) return true;
+        }
+        showLoginOverlay();
+        return false;
+      } catch { return true; }
+    }
+
+    // ── State ─────────────────────────
     let eventSource = null;
     let allEvents = [];
     let allTasks = [];
     let currentFilter = 'all';
 
-    // ── Init ──────────────────────────────
-    document.addEventListener('DOMContentLoaded', () => { applyLang(); fetchProjects(); refreshAll(); connectSSE(); });
+    // ── Init ──────────────────────────
+    document.addEventListener('DOMContentLoaded', async () => {
+      applyLang();
+      const ok = await checkAuth();
+      if (ok) { fetchProjects(); refreshAll(); connectSSE(); }
+    });
 
-    async function refreshAll() { await Promise.all([fetchStatus(), fetchTasks()]); }
+    async function refreshAll() { await Promise.all([fetchStatus(), fetchTasks(), fetchFinops()]); }
+
+    async function fetchFinops() {
+      try {
+        const r = await authFetch('/api/finops');
+        const d = await r.json();
+        document.getElementById('finops-tokens').textContent = (d.total_tokens || 0).toLocaleString();
+        document.getElementById('finops-cost').textContent = '$' + (d.total_cost || 0).toFixed(4);
+        document.getElementById('finops-tasks').textContent = d.task_count || 0;
+        document.getElementById('finops-records').textContent = (d.entry_count || 0) + ' records';
+        const bd = document.getElementById('finops-breakdown');
+        let h = '';
+        const byNode = d.by_node || {};
+        const nodes = Object.entries(byNode).sort((a,b) => b[1].total_tokens - a[1].total_tokens);
+        if (nodes.length) {
+          h += '<div class="text-zinc-600 font-semibold mb-1">By Node</div>';
+          nodes.forEach(([n, s]) => {
+            h += `<div class="flex justify-between"><span class="text-zinc-400">${esc(n)}</span><span>${s.total_tokens.toLocaleString()} tokens &middot; $${s.cost.toFixed(4)}</span></div>`;
+          });
+        }
+        bd.innerHTML = h;
+      } catch (e) { /* finops not critical */ }
+    }
 
     // ── Projects ─────────────────────────
     async function fetchProjects() {
       try {
-        const r = await fetch('/api/projects');
+        const r = await authFetch('/api/projects');
         const d = await r.json();
         const sel = document.getElementById('project-select');
         sel.innerHTML = '';
@@ -497,9 +627,8 @@
     async function switchProject(name) {
       if (!name) return;
       try {
-        await fetch('/api/projects/switch', {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ name })
+        await authFetch('/api/projects/switch', {
+          method: 'POST', body: JSON.stringify({ name })
         });
         await refreshAll();
         await fetchProjects();
@@ -517,7 +646,7 @@
 
     async function fetchStatus() {
       try {
-        const r = await fetch('/api/status');
+        const r = await authFetch('/api/status');
         const d = await r.json();
         const el = document.getElementById('active-task');
         const banner = document.getElementById('status-banner');
@@ -543,7 +672,7 @@
 
     async function fetchTasks() {
       try {
-        const r = await fetch('/api/tasks');
+        const r = await authFetch('/api/tasks');
         const d = await r.json();
         document.getElementById('total-tasks').textContent = d.count;
         allTasks = d.tasks || [];
@@ -553,7 +682,7 @@
 
     async function fetchTaskDetail(taskId) {
       try {
-        const r = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`);
+        const r = await authFetch(`/api/tasks/${encodeURIComponent(taskId)}`);
         const d = await r.json();
         showModal(taskId, d);
       } catch (e) { console.error('Task detail fetch failed:', e); }
@@ -563,7 +692,8 @@
 
     function connectSSE() {
       if (eventSource) eventSource.close();
-      eventSource = new EventSource('/api/events');
+      const sseUrl = authToken ? `/api/events?token=${encodeURIComponent(authToken)}` : '/api/events';
+      eventSource = new EventSource(sseUrl);
       eventSource.addEventListener('connected', () => setConn(true));
       eventSource.addEventListener('heartbeat', () => setConn(true));
       eventSource.addEventListener('dashboard_update', e => {

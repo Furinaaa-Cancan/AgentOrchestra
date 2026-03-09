@@ -17,10 +17,12 @@ import contextlib
 import json
 import logging
 import os
+import platform
 import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -351,6 +353,128 @@ def _trigger_dir(subtask_id: str | None, terminal_slot: int | None = None) -> Pa
     return workspace_dir()
 
 
+# ── Cross-platform Terminal Opener ────────────────────────
+
+def _detect_terminal_emulator() -> tuple[str, list[str]] | None:
+    """Detect available terminal emulator on the current platform.
+
+    Returns (name, command_prefix) or None if no terminal found.
+    The command_prefix is a list that, when combined with the script path,
+    opens a new terminal window running the script.
+    """
+    plat = sys.platform
+
+    if plat == "darwin":
+        if shutil.which("osascript"):
+            return ("Terminal.app", ["osascript"])
+        return None
+
+    if plat == "win32":
+        # Windows Terminal (modern)
+        if shutil.which("wt.exe"):
+            return ("Windows Terminal", ["wt.exe", "new-tab", "--title"])
+        # Classic cmd
+        if shutil.which("cmd.exe"):
+            return ("cmd.exe", ["cmd.exe", "/c", "start"])
+        return None
+
+    # Linux / FreeBSD / other Unix
+    for name, cmd_prefix in [
+        ("gnome-terminal", ["gnome-terminal", "--title"]),
+        ("konsole",        ["konsole", "-p", "tabtitle="]),
+        ("xfce4-terminal", ["xfce4-terminal", "--title"]),
+        ("xterm",          ["xterm", "-T"]),
+    ]:
+        if shutil.which(name):
+            return (name, cmd_prefix)
+    return None
+
+
+def _open_terminal_window(script_path: str, label: str) -> bool:
+    """Open a new terminal window running the given script. Cross-platform.
+
+    Returns True on success, False on failure.
+    Supports: macOS (Terminal.app), Windows (wt.exe/cmd.exe),
+    Linux (gnome-terminal/konsole/xfce4-terminal/xterm).
+    """
+    detected = _detect_terminal_emulator()
+    if not detected:
+        logger.warning("No terminal emulator detected on %s", sys.platform)
+        return False
+
+    name, _ = detected
+
+    try:
+        if sys.platform == "darwin":
+            # macOS: use AppleScript to open Terminal.app
+            safe_path = script_path.replace("\\", "\\\\").replace('"', '\\"')
+            applescript = f'''
+tell application "Terminal"
+    activate
+    do script "{safe_path}"
+end tell
+'''
+            subprocess.run(["osascript", "-e", applescript], capture_output=True, timeout=10)
+            return True
+
+        if sys.platform == "win32":
+            # Windows: create a .bat wrapper that calls bash/WSL
+            bat_path = script_path + ".bat"
+            bash_bin = shutil.which("bash")
+            if bash_bin:
+                # Git Bash or WSL available — run bash script through it
+                Path(bat_path).write_text(
+                    f'@echo off\ntitle {label}\n"{bash_bin}" "{script_path}"\n',
+                    encoding="utf-8",
+                )
+            else:
+                # No bash — unlikely but write a stub
+                Path(bat_path).write_text(
+                    f'@echo off\ntitle {label}\necho No bash found. Install Git for Windows or WSL.\npause\n',
+                    encoding="utf-8",
+                )
+            if name == "Windows Terminal":
+                subprocess.run(
+                    ["wt.exe", "new-tab", "--title", label, "cmd", "/c", bat_path],
+                    capture_output=True, timeout=10,
+                )
+            else:
+                subprocess.run(
+                    ["cmd.exe", "/c", "start", label, bat_path],
+                    capture_output=True, timeout=10,
+                )
+            return True
+
+        # Linux: use detected terminal emulator
+        if name == "gnome-terminal":
+            subprocess.Popen(
+                ["gnome-terminal", "--title", label, "--", "bash", script_path],
+                start_new_session=True,
+            )
+        elif name == "konsole":
+            subprocess.Popen(
+                ["konsole", "-p", f"tabtitle={label}", "-e", "bash", script_path],
+                start_new_session=True,
+            )
+        elif name == "xfce4-terminal":
+            subprocess.Popen(
+                ["xfce4-terminal", "--title", label, "-e", f"bash {script_path}"],
+                start_new_session=True,
+            )
+        elif name == "xterm":
+            subprocess.Popen(
+                ["xterm", "-T", label, "-e", "bash", script_path],
+                start_new_session=True,
+            )
+        else:
+            return False
+        return True
+
+    except Exception as e:
+        logger.error("Failed to open %s terminal: %s", name, e)
+        return False
+
+
 def dispatch_visible(
     agent_id: str,
     role: str,
@@ -529,20 +653,12 @@ def dispatch_visible(
         f.write("\n".join(lines) + "\n")
     Path(wrapper_path).chmod(0o755)
 
-    # Escape AppleScript string to prevent injection via wrapper_path
-    safe_path = wrapper_path.replace("\\", "\\\\").replace('"', '\\"')
-    applescript = f'''
-tell application "Terminal"
-    activate
-    do script "{safe_path}"
-end tell
-'''
-    try:
-        subprocess.run(["osascript", "-e", applescript], capture_output=True, timeout=10)
+    ok = _open_terminal_window(wrapper_path, label)
+    if ok:
         _open_terminals[key] = wrapper_path
         logger.info("Opened terminal for %s", key)
-    except Exception as e:
-        logger.error("Failed to open terminal for %s: %s", key, e)
+    else:
+        logger.error("Failed to open terminal for %s, falling back to headless CLI", key)
         spawn_cli_agent(agent_id, role, command_template, project_dir, timeout_sec, subtask_id)
 
 

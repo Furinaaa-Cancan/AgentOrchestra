@@ -460,6 +460,20 @@ def build_node(state: WorkflowState) -> dict[str, Any]:
     # Record optional token usage from IDE driver (FinOps)
     if isinstance(result.get("token_usage"), dict):
         graph_stats.record_token_usage("build", result["token_usage"])
+        # Persist to FinOps log for cross-task aggregation
+        with contextlib.suppress(Exception):
+            from multi_agent.finops import record_task_usage
+            tu = result["token_usage"]
+            record_task_usage(
+                task_id=state.get("task_id", ""),
+                node="build",
+                agent_id=state.get("builder", ""),
+                input_tokens=int(tu.get("input_tokens", 0)),
+                output_tokens=int(tu.get("output_tokens", 0)),
+                total_tokens=int(tu.get("total_tokens", 0)),
+                cost=float(tu.get("cost", 0.0)),
+                model=str(tu.get("model", "")),
+            )
 
     # Detect CLI driver error output — don't waste reviewer's time
     if result.get("status") == "error":
@@ -572,6 +586,20 @@ def review_node(state: WorkflowState) -> dict[str, Any]:
     # Record optional token usage from IDE driver (FinOps)
     if isinstance(result.get("token_usage"), dict):
         graph_stats.record_token_usage("review", result["token_usage"])
+        # Persist to FinOps log for cross-task aggregation
+        with contextlib.suppress(Exception):
+            from multi_agent.finops import record_task_usage
+            tu = result["token_usage"]
+            record_task_usage(
+                task_id=state.get("task_id", ""),
+                node="review",
+                agent_id=state.get("reviewer", ""),
+                input_tokens=int(tu.get("input_tokens", 0)),
+                output_tokens=int(tu.get("output_tokens", 0)),
+                total_tokens=int(tu.get("total_tokens", 0)),
+                cost=float(tu.get("cost", 0.0)),
+                model=str(tu.get("model", "")),
+            )
 
     # Detect CLI driver error output
     if result.get("status") == "error":

@@ -2,7 +2,7 @@
 
 **你的 AI 乐队，一条命令开演。**
 
-基于 **LangGraph 单一状态源（SSOT）** 驱动 4 节点工作流。v0.9.1
+基于 **LangGraph 单一状态源（SSOT）** 驱动 4 节点工作流。v0.9.2
 
 ---
 
@@ -508,7 +508,9 @@ decide_node ──► auto_commit("approved: xxx") + auto_tag("task/xxx")
 # 启动仪表板（自动检测 Node.js，没有则降级到 Python/uvicorn）
 my dashboard
 my dashboard --port 9000
-my dashboard --host 0.0.0.0   # ⚠️ 无认证，仅限可信网络
+my dashboard --host 0.0.0.0   # ⚠️ 建议配合 --token 使用
+my dashboard --token auto     # 🔒 自动生成认证 token
+my dashboard --token mysecret # 🔒 指定认证 token
 ```
 
 ### 功能
@@ -600,7 +602,7 @@ reviewer 输出被判定为 rubber-stamp（缺少具体 reasoning/evidence）。
 ## 测试
 
 ```bash
-pytest tests/ -q            # 1250 tests, 全通过
+pytest tests/ -q            # 1274 tests, 全通过
 python3 -m mypy src/        # 类型检查
 python3 -m ruff check src/  # Lint
 ```
@@ -640,7 +642,7 @@ python3 -m ruff check src/  # Lint
 - **TOCTOU 防护**：文件操作使用 open 而非 exists()+open 模式
 - **AppleScript 注入**：GUI 驱动模式转义双引号、反斜杠、换行符
 
-> ⚠️ Web Dashboard **无认证**，仅限可信网络使用。
+> ✅ Web Dashboard 支持 **可选 token 认证**（`my dashboard --token auto`）。未启用 token 时仅限可信网络使用。
 
 ---
 
@@ -663,14 +665,15 @@ python3 -m ruff check src/  # Lint
 |------|-------|---------|-------|
 | file 模式（纯手动 IDE 协作） | ✅ | ✅ | ✅ |
 | CLI 自动模式（`--builder codex`） | ✅ | ⚠️ 需 WSL/Git Bash | ✅ |
-| `--visible`（终端窗口可视化） | ✅ | ❌ 待适配 | ❌ 待适配 |
+| `--visible`（终端窗口可视化） | ✅ | ✅ wt.exe/cmd | ✅ gnome-terminal等 |
 | GUI 驱动（AppleScript 自动化） | ✅ | ❌ 不适用 | ❌ 不适用 |
 | 图引擎 / 状态管理 / 并行分解 | ✅ | ✅ | ✅ |
 
-当前 `--visible` 模式依赖 macOS Terminal.app + AppleScript 打开终端窗口。Windows/Linux 适配已列入计划：
-- Windows：`start cmd /k` 或 Windows Terminal (`wt.exe`)
-- Linux：`gnome-terminal` / `xterm`
-- 核心逻辑（LangGraph 图引擎、workspace 原子写入、并行编排）完全跨平台，无需修改
+`--visible` 模式已支持跨平台终端窗口：
+- **macOS**：Terminal.app via AppleScript
+- **Windows**：Windows Terminal (`wt.exe`) 或 `cmd.exe`（需 Git Bash / WSL）
+- **Linux**：gnome-terminal / konsole / xfce4-terminal / xterm（自动检测）
+- 无可用终端时自动降级到后台 CLI 模式
 
 ---
 
@@ -682,7 +685,7 @@ AGPL-3.0，详见 `LICENSE`。
 
 ## English Summary
 
-**MyGO — Multi-agent Yielding Group Orchestra** is your AI band for code delivery (v0.9.1).
+**MyGO — Multi-agent Yielding Group Orchestra** is your AI band for code delivery (v0.9.2).
 Recommended: **1 IDE + N CLI agents** — one IDE orchestrates, multiple Codex/Claude CLI agents work in parallel.
 - Three driver modes: manual (file), auto CLI, and GUI automation (macOS AppleScript)
 - **Parallel execution**: independent sub-tasks run concurrently via ThreadPoolExecutor
@@ -692,8 +695,9 @@ Recommended: **1 IDE + N CLI agents** — one IDE orchestrates, multiple Codex/C
 - Task decomposition with dependency-aware topological execution
 - Rubber-stamp detection, retry budgets, timeout guards
 - Atomic file writes, TOCTOU race protection, input validation
-- **Platform**: macOS fully supported; Windows/Linux file+CLI modes work, `--visible` mode macOS-only (Windows Terminal adaptation planned)
+- **Platform**: macOS / Windows / Linux — `--visible` mode cross-platform (Terminal.app / wt.exe / gnome-terminal)
 - **Task templates**: 6 built-in templates (auth, crud, bugfix, refactor, test, api-endpoint) with `${var}` substitution
 - **Git integration**: auto-commit, auto-branch, auto-tag via EventHooks; auto-test runner with evidence injection
-- **Web Dashboard**: real-time task monitoring via Node.js/Express + SSE, TailwindCSS frontend, Chinese/English i18n
-- 1250 tests, full mypy/ruff compliance
+- **Web Dashboard**: real-time task monitoring via Node.js/Express + SSE, TailwindCSS frontend, Chinese/English i18n, optional token auth
+- **FinOps**: token usage tracking, cost estimation, budget alerts (`my finops`), Dashboard visualization
+- 1274 tests, full mypy/ruff compliance

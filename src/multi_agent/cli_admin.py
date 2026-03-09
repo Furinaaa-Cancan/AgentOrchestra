@@ -531,3 +531,32 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
 
         _validate_task_id(task_id)
         click.echo(session_trace(task_id, fmt))
+
+    # ── finops ──────────────────────────────────────────
+
+    @main.command("finops")
+    @click.option("--task-id", default=None, help="Filter by task ID")
+    @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+    @handle_errors
+    def finops_cmd(task_id: str | None, as_json: bool) -> None:
+        """Token 用量与成本报告（FinOps）."""
+        import json as _json
+
+        from multi_agent.finops import aggregate_usage, check_budget, format_report
+
+        if task_id:
+            _validate_task_id(task_id)
+
+        agg = aggregate_usage(task_id=task_id)
+
+        if as_json:
+            click.echo(_json.dumps(agg, ensure_ascii=False, indent=2))
+            return
+
+        click.echo(format_report(agg))
+
+        # Budget check
+        budget = check_budget()
+        if budget["over_budget"]:
+            for w in budget["warnings"]:
+                click.echo(f"  ⚠️  {w}", err=True)

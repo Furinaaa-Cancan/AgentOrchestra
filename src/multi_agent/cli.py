@@ -992,7 +992,7 @@ def template_show(template_id: str) -> None:
 # ── Web Dashboard ────────────────────────────────────────
 
 
-def _launch_dashboard_node(host: str, port: int, url: str) -> None:
+def _launch_dashboard_node(host: str, port: int, url: str, *, token: str = "") -> None:
     """Launch Node.js dashboard server, fall back to Python/uvicorn."""
     import contextlib
     import os
@@ -1018,6 +1018,8 @@ def _launch_dashboard_node(host: str, port: int, url: str) -> None:
                 )
 
         click.echo(f"🎸 MyGO Dashboard (Node.js): {url}")
+        if token:
+            click.echo(f"   🔒 Auth enabled (token: {token[:4]}{'*' * (len(token) - 4)})")
         click.echo("   Press Ctrl+C to stop\n")
 
         env = {
@@ -1026,6 +1028,8 @@ def _launch_dashboard_node(host: str, port: int, url: str) -> None:
             "MYGO_ROOT_DIR": str(root_dir()),
             "MYGO_HISTORY_DIR": str(history_dir()),
         }
+        if token:
+            env["MYGO_AUTH_TOKEN"] = token
         with contextlib.suppress(KeyboardInterrupt):
             subprocess.run(
                 [node_bin, str(app_js), "--port", str(port), "--host", host],
@@ -1057,8 +1061,9 @@ def _launch_dashboard_node(host: str, port: int, url: str) -> None:
 @click.option("--port", default=8765, type=int, help="Server port")
 @click.option("--host", default="127.0.0.1", help="Bind address")
 @click.option("--open", "open_browser", is_flag=True, default=True, help="Open browser on start")
+@click.option("--token", default="", help="Auth token (use 'auto' to generate one)")
 @handle_errors
-def dashboard(port: int, host: str, open_browser: bool) -> None:
+def dashboard(port: int, host: str, open_browser: bool, token: str) -> None:
     """Launch the web dashboard for real-time task monitoring.
 
     Opens a browser to the dashboard UI showing live task status,
@@ -1068,13 +1073,31 @@ def dashboard(port: int, host: str, open_browser: bool) -> None:
       my dashboard
       my dashboard --port 9000
       my dashboard --host 0.0.0.0
+      my dashboard --token auto
+      my dashboard --token mysecrettoken
     """
     ensure_workspace()
+
+    # Resolve token: CLI flag > env var > .ma.yaml > empty
+    import os
+    if not token:
+        token = os.environ.get("MYGO_AUTH_TOKEN", "")
+    if not token:
+        from multi_agent.config import load_project_config
+        proj = load_project_config()
+        dashboard_cfg = proj.get("dashboard")
+        if isinstance(dashboard_cfg, dict):
+            token = str(dashboard_cfg.get("token", ""))
+    if token == "auto":
+        import secrets
+        token = secrets.token_urlsafe(24)
+
     url = f"http://{host}:{port}"
 
-    if host not in ("127.0.0.1", "localhost", "::1"):
+    if host not in ("127.0.0.1", "localhost", "::1") and not token:
         click.echo("   ⚠️  WARNING: Dashboard has no authentication. "
                     "Binding to non-localhost exposes task data to the network.", err=True)
+        click.echo("   💡 Use --token auto to enable auth.", err=True)
 
     if open_browser:
         import threading
@@ -1087,7 +1110,7 @@ def dashboard(port: int, host: str, open_browser: bool) -> None:
         threading.Thread(target=_open, daemon=True).start()
 
     # Prefer Node.js backend, fall back to Python/uvicorn
-    _launch_dashboard_node(host, port, url)
+    _launch_dashboard_node(host, port, url, token=token)
 
 
 # ── Admin commands (extracted to cli_admin.py) ──────────

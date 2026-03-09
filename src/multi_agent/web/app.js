@@ -13,6 +13,7 @@
  *   MYGO_WORKSPACE_DIR  — .multi-agent/ absolute path
  *   MYGO_ROOT_DIR       — project root absolute path
  *   MYGO_HISTORY_DIR    — history/ absolute path
+ *   MYGO_AUTH_TOKEN     — optional Bearer token for API authentication
  */
 
 const express = require("express");
@@ -33,6 +34,7 @@ const HOST = getArg("host", "127.0.0.1");
 const WORKSPACE = getArg("workspace", process.env.MYGO_WORKSPACE_DIR || "");
 const ROOT_DIR = getArg("root", process.env.MYGO_ROOT_DIR || process.cwd());
 const HISTORY = getArg("history", process.env.MYGO_HISTORY_DIR || "");
+const AUTH_TOKEN = getArg("token", process.env.MYGO_AUTH_TOKEN || "");
 
 // Resolve paths (mutable for multi-project switching)
 let wsDir = WORKSPACE || path.join(ROOT_DIR, ".multi-agent");
@@ -184,18 +186,55 @@ app.use((req, res, next) => {
   if (origin) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   }
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
 
-// Serve static files (index.html)
+// Serve static files (index.html) — no auth required so login page loads
 app.use(express.static(path.join(__dirname, "static")));
+
+// ── Authentication ──────────────────────────────────────
+// If AUTH_TOKEN is set, require Bearer token on all /api/* routes.
+// Static files are served without auth so the login UI can load.
+function authMiddleware(req, res, next) {
+  if (!AUTH_TOKEN) return next(); // auth disabled
+
+  // /api/auth/check is public — frontend uses it to detect if auth is required
+  if (req.path === "/api/auth/check") return next();
+
+  // SSE: accept token via query param (?token=xxx) since EventSource can't set headers
+  if (req.path === "/api/events" && req.query.token === AUTH_TOKEN) return next();
+
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (token !== AUTH_TOKEN) {
+    return res.status(401).json({ error: "Unauthorized", auth_required: true });
+  }
+  next();
+}
+app.use("/api", authMiddleware);
 
 // ── REST API ────────────────────────────────────────────
 
 app.use(express.json({ limit: "1mb" }));
+
+// Auth check endpoint — tells frontend whether auth is required
+app.get("/api/auth/check", (_req, res) => {
+  res.json({ auth_required: !!AUTH_TOKEN });
+});
+
+// Auth login endpoint — validate token
+app.post("/api/auth/login", (req, res) => {
+  if (!AUTH_TOKEN) return res.json({ ok: true });
+  const { token } = req.body || {};
+  if (token === AUTH_TOKEN) {
+    res.json({ ok: true });
+  } else {
+    res.status(401).json({ ok: false, error: "Invalid token" });
+  }
+});
 
 // ── Multi-project API ──────────────────────────────────
 
@@ -310,6 +349,53 @@ app.get("/api/tasks/:taskId/trace", (req, res) => {
     return res.status(400).json({ error: "invalid task_id" });
   }
   res.json({ task_id: taskId, events: readTraceEvents(taskId) });
+});
+
+// ── FinOps API ───────────────────────────────────────────
+
+app.get("/api/finops", (_req, res) => {
+  const usageFile = path.join(wsDir, "logs", "token-usage.jsonl");
+  if (!fs.existsSync(usageFile)) {
+    return res.json({ total_tokens: 0, input_tokens: 0, output_tokens: 0, total_cost: 0, task_count: 0, entry_count: 0, by_task: {}, by_node: {}, by_agent: {} });
+  }
+  try {
+    const stat = fs.statSync(usageFile);
+    if (stat.size > 10 * 1024 * 1024) return res.status(413).json({ error: "Usage log too large" });
+  } catch { return res.json({ total_tokens: 0, input_tokens: 0, output_tokens: 0, total_cost: 0, task_count: 0, entry_count: 0, by_task: {}, by_node: {}, by_agent: {} }); }
+
+  const entries = parseJsonlFile(usageFile);
+  const totals = { total_tokens: 0, input_tokens: 0, output_tokens: 0, total_cost: 0 };
+  const byTask = {}, byNode = {}, byAgent = {};
+  const taskIds = new Set();
+
+  for (const e of entries) {
+    const inp = parseInt(e.input_tokens || 0);
+    const out = parseInt(e.output_tokens || 0);
+    const tot = parseInt(e.total_tokens || 0) || (inp + out);
+    const cost = parseFloat(e.cost || 0);
+    const tid = e.task_id || "unknown";
+    const node = e.node || "unknown";
+    const agent = e.agent_id || "unknown";
+    taskIds.add(tid);
+
+    totals.total_tokens += tot;
+    totals.input_tokens += inp;
+    totals.output_tokens += out;
+    totals.total_cost += cost;
+
+    for (const [bucket, key] of [[byTask, tid], [byNode, node], [byAgent, agent]]) {
+      if (!bucket[key]) bucket[key] = { total_tokens: 0, input_tokens: 0, output_tokens: 0, cost: 0, count: 0 };
+      const b = bucket[key];
+      b.total_tokens += tot; b.input_tokens += inp; b.output_tokens += out; b.cost += cost; b.count++;
+    }
+  }
+
+  totals.total_cost = Math.round(totals.total_cost * 1e6) / 1e6;
+  for (const bucket of [byTask, byNode, byAgent]) {
+    for (const v of Object.values(bucket)) v.cost = Math.round(v.cost * 1e6) / 1e6;
+  }
+
+  res.json({ ...totals, task_count: taskIds.size, entry_count: entries.length, by_task: byTask, by_node: byNode, by_agent: byAgent });
 });
 
 // ── SSE Event Stream ────────────────────────────────────
@@ -428,6 +514,7 @@ app.get("/api/events", (req, res) => {
 const server = app.listen(PORT, HOST, () => {
   console.log(`\n  🎸 MyGO Dashboard running at http://${HOST}:${PORT}`);
   console.log(`     Workspace: ${wsDir}`);
+  console.log(`     Auth: ${AUTH_TOKEN ? "enabled (token required)" : "disabled"}`);
   console.log(`     Press Ctrl+C to stop\n`);
 });
 
