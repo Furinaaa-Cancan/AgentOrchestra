@@ -292,3 +292,19 @@ app.use("/api", (req, res, next) => {
 **原因**: 模块注释提到"Optionally supports OpenAI embeddings"但代码中没有实现。
 **修复**: 删除误导性文档。
 **教训**: **docstring 必须与实际实现一致，不能写"计划实现"的功能。**
+
+---
+
+## 十、v0.11.0 Code Review 发现的 Bug（2 个）
+
+### E32: Smart Retry query 无长度限制
+**文件**: `graph.py` `plan_node` Smart Retry 注入
+**原因**: `state.get('requirement', '') + retry_feedback` 可能产生多 KB 的查询字符串，传给 TF-IDF 引擎浪费计算资源。
+**修复**: `req_short = requirement[:300]` + `fb_short = retry_feedback[:300]` 截断到 ~600 字符。
+**教训**: **传给搜索引擎的查询字符串要有长度上限，否则大文本会拖慢检索。**
+
+### E33: 未使用的 import (contextlib in mcp_server.py)
+**文件**: `mcp_server.py`
+**原因**: 添加 write tools 时引入了 `contextlib` 但实际没有使用。
+**修复**: 删除 `import contextlib`。
+**教训**: **每次修改后检查 unused imports。**

@@ -306,7 +306,9 @@ def plan_node(state: WorkflowState) -> dict[str, Any]:
     if retry_count > 0:
         with contextlib.suppress(Exception):
             from multi_agent.semantic_memory import get_context
-            query = f"{state.get('requirement', '')} {retry_feedback}"
+            req_short = state.get("requirement", "")[:300]
+            fb_short = retry_feedback[:300]
+            query = f"{req_short} {fb_short}"
             mem_ctx = get_context(query, top_k=3, max_chars=1500)
             if mem_ctx:
                 prompt += f"\n\n{mem_ctx}"
