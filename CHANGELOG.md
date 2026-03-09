@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.19.0] - 2026-03-09
+
+### Added
+- **Hook Emit in Graph** — plugin hooks now fire at all 6 lifecycle points
+  - `on_task_start` — plan_node (first run only)
+  - `on_build_complete` — build_node after successful build
+  - `on_review_complete` — review_node after review
+  - `on_task_complete` — decide_node on approve (with elapsed time)
+  - `on_task_failed` — decide_node on final failure/escalation
+  - `on_retry` — decide_node on request_changes/reject with retry
+  - All wrapped in `contextlib.suppress(Exception)` — hook failures never crash pipeline
+- **Queue Cleanup** — remove finished tasks from daemon queue
+  - `my jobs --clean` — purge completed/failed/cancelled entries
+  - `clean_queue()` function in daemon.py
+- **7 new tests** — hook emit integration (4) + queue cleanup (3)
+
 ## [0.18.0] - 2026-03-09
 
 ### Added

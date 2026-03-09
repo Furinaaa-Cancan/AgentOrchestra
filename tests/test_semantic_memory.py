@@ -1259,3 +1259,84 @@ class TestTaskDependencies:
         nxt = _next_task()
         assert nxt is not None
         assert nxt["queue_id"] == "q-child"  # dependency completed, child eligible
+
+
+# ══════════════════════════════════════════════════════════
+# Feature V: Hook Emit in Graph (unit-level)
+# ══════════════════════════════════════════════════════════
+
+
+class TestHookEmitIntegration:
+    """Test that graph-level hook emit calls work end-to-end."""
+
+    def test_emit_on_task_start(self):
+        from multi_agent.hooks import clear_hooks, emit, register_hook
+        clear_hooks()
+        calls = []
+        register_hook("on_task_start", lambda e: calls.append(e))
+        emit("on_task_start", {"task_id": "t-1", "requirement": "test"})
+        assert len(calls) == 1
+        assert calls[0]["task_id"] == "t-1"
+        clear_hooks()
+
+    def test_emit_on_build_complete(self):
+        from multi_agent.hooks import clear_hooks, emit, register_hook
+        clear_hooks()
+        calls = []
+        register_hook("on_build_complete", lambda e: calls.append(e))
+        emit("on_build_complete", {"task_id": "t-2", "builder": "windsurf", "summary": "done"})
+        assert len(calls) == 1
+        clear_hooks()
+
+    def test_emit_on_task_complete(self):
+        from multi_agent.hooks import clear_hooks, emit, register_hook
+        clear_hooks()
+        calls = []
+        register_hook("on_task_complete", lambda e: calls.append(e))
+        emit("on_task_complete", {"task_id": "t-3", "elapsed": 42.5})
+        assert calls[0]["elapsed"] == 42.5
+        clear_hooks()
+
+    def test_emit_on_task_failed(self):
+        from multi_agent.hooks import clear_hooks, emit, register_hook
+        clear_hooks()
+        calls = []
+        register_hook("on_task_failed", lambda e: calls.append(e))
+        emit("on_task_failed", {"task_id": "t-4", "error": "timeout"})
+        assert calls[0]["error"] == "timeout"
+        clear_hooks()
+
+
+# ══════════════════════════════════════════════════════════
+# Feature W: Queue Cleanup
+# ══════════════════════════════════════════════════════════
+
+
+class TestQueueCleanup:
+    """Test queue cleanup functionality."""
+
+    def test_clean_queue(self):
+        from multi_agent.daemon import _save_queue, clean_queue
+        _save_queue([
+            {"queue_id": "q-1", "status": "completed"},
+            {"queue_id": "q-2", "status": "failed"},
+            {"queue_id": "q-3", "status": "queued"},
+            {"queue_id": "q-4", "status": "cancelled"},
+        ])
+        result = clean_queue()
+        assert result["removed"] == 3
+        assert result["remaining"] == 1
+
+    def test_clean_empty_queue(self):
+        from multi_agent.daemon import _save_queue, clean_queue
+        _save_queue([])
+        result = clean_queue()
+        assert result["removed"] == 0
+
+    def test_clean_cli(self):
+        from click.testing import CliRunner
+        from multi_agent.cli import main
+        runner = CliRunner()
+        result = runner.invoke(main, ["jobs", "--clean"])
+        assert result.exit_code == 0
+        assert "清理" in result.output

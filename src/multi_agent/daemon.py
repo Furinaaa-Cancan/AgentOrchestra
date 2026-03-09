@@ -191,6 +191,20 @@ def cancel_task(queue_id: str) -> dict[str, Any]:
     return {"status": "error", "reason": "not found"}
 
 
+def clean_queue() -> dict[str, Any]:
+    """Remove completed, failed, and cancelled entries from the queue.
+
+    Returns:
+        Dict with removed count and remaining count.
+    """
+    entries = _load_queue()
+    keep = [e for e in entries if e.get("status") in ("queued", "running")]
+    removed = len(entries) - len(keep)
+    if removed > 0:
+        _save_queue(keep)
+    return {"removed": removed, "remaining": len(keep)}
+
+
 def queue_stats() -> dict[str, Any]:
     """Get queue statistics."""
     entries = _load_queue()

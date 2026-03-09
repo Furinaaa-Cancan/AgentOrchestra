@@ -2,7 +2,7 @@
 
 **你的 AI 乐队，一条命令开演。**
 
-基于 **LangGraph 单一状态源（SSOT）** 驱动 4 节点工作流。v0.18.0
+基于 **LangGraph 单一状态源（SSOT）** 驱动 4 节点工作流。v0.19.0
 
 ---
 
@@ -685,7 +685,7 @@ AGPL-3.0，详见 `LICENSE`。
 
 ## English Summary
 
-**MyGO — Multi-agent Yielding Group Orchestra** is your AI band for code delivery (v0.18.0).
+**MyGO — Multi-agent Yielding Group Orchestra** is your AI band for code delivery (v0.19.0).
 Recommended: **1 IDE + N CLI agents** — one IDE orchestrates, multiple Codex/Claude CLI agents work in parallel.
 - Three driver modes: manual (file), auto CLI, and GUI automation (macOS AppleScript)
 - **Parallel execution**: independent sub-tasks run concurrently via ThreadPoolExecutor
@@ -717,4 +717,6 @@ Recommended: **1 IDE + N CLI agents** — one IDE orchestrates, multiple Codex/C
 - **Agent Capability Matrix**: `my agents --matrix` — tabular view of all agents × capabilities
 - **Plugin/Hook System**: `my hooks` — 6 lifecycle events, decorator + config-driven registration
 - **Task Dependencies**: `my submit --after q-xxx` — dependency chains in task queue
-- 1346 tests, full mypy/ruff compliance
+- **Hook Emit in Graph**: all 6 lifecycle events fire from graph nodes (plan/build/review/decide)
+- **Queue Cleanup**: `my jobs --clean` — purge completed/failed/cancelled entries
+- 1353 tests, full mypy/ruff compliance

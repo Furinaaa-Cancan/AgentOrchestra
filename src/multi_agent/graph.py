@@ -232,6 +232,10 @@ def plan_node(state: WorkflowState) -> dict[str, Any]:
     # (MAST NeurIPS 2025 SD-4; MAS-FIRE 2026 reliability evaluation).
     if state.get("retry_count", 0) == 0:
         graph_stats.reset()
+        # Plugin hook: task start
+        with contextlib.suppress(Exception):
+            from multi_agent.hooks import emit
+            emit("on_task_start", {"task_id": state.get("task_id", ""), "requirement": str(state.get("requirement", ""))[:200]})
 
     skill_id = state["skill_id"]
     contract = load_contract(skill_id)
@@ -544,6 +548,10 @@ def build_node(state: WorkflowState) -> dict[str, Any]:
             {"role": "builder", "output": result.get("summary", ""), "t": time.time()}
         ],
     }
+    # Plugin hook: build complete
+    with contextlib.suppress(Exception):
+        from multi_agent.hooks import emit
+        emit("on_build_complete", {"task_id": state.get("task_id", ""), "builder": builder_id, "summary": str(result.get("summary", ""))[:200]})
     graph_hooks.fire_exit("build", state, build_result)
     return build_result
 
@@ -646,6 +654,10 @@ def review_node(state: WorkflowState) -> dict[str, Any]:
         "review_started_at": review_started,
         "conversation": [{"role": "reviewer", "decision": decision, "t": time.time()}],
     }
+    # Plugin hook: review complete
+    with contextlib.suppress(Exception):
+        from multi_agent.hooks import emit
+        emit("on_review_complete", {"task_id": state.get("task_id", ""), "reviewer": reviewer_id, "decision": decision})
     graph_hooks.fire_exit("review", state, review_result)
     return review_result
 
@@ -913,10 +925,30 @@ def decide_node(state: WorkflowState) -> dict[str, Any]:
 
     if decision == "approve":
         result = _decide_approve(state, rubber_stamp)
+        # Plugin hook: task complete
+        with contextlib.suppress(Exception):
+            from multi_agent.hooks import emit
+            elapsed = time.time() - (state.get("task_started_at") or time.time())
+            emit("on_task_complete", {"task_id": state.get("task_id", ""), "elapsed": round(elapsed, 1)})
     elif decision == "request_changes":
         result = _decide_request_changes(state, reviewer_output, original_convo=original_convo)
+        # Plugin hook: retry
+        with contextlib.suppress(Exception):
+            from multi_agent.hooks import emit
+            emit("on_retry", {"task_id": state.get("task_id", ""), "attempt": state.get("retry_count", 0) + 1})
     else:
         result = _decide_reject_retry(state, reviewer_output, original_convo=original_convo)
+        fs = result.get("final_status")
+        if fs == "failed" or fs == "escalated":
+            # Plugin hook: task failed
+            with contextlib.suppress(Exception):
+                from multi_agent.hooks import emit
+                emit("on_task_failed", {"task_id": state.get("task_id", ""), "error": str(result.get("error", ""))[:200]})
+        else:
+            # Plugin hook: retry
+            with contextlib.suppress(Exception):
+                from multi_agent.hooks import emit
+                emit("on_retry", {"task_id": state.get("task_id", ""), "attempt": state.get("retry_count", 0) + 1})
 
     graph_hooks.fire_exit("decide", state, result)
     return result

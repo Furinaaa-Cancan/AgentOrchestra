@@ -1058,10 +1058,16 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
     @click.option("--status", "status_filter", default=None,
                   type=click.Choice(["queued", "running", "completed", "failed", "cancelled"]),
                   help="Filter by status")
+    @click.option("--clean", is_flag=True, default=False, help="Remove finished tasks from queue")
     @handle_errors
-    def jobs_cmd(status_filter: str | None) -> None:
+    def jobs_cmd(status_filter: str | None, clean: bool) -> None:
         """查看 daemon 任务队列状态."""
         from multi_agent.daemon import list_queue, queue_stats
+        if clean:
+            from multi_agent.daemon import clean_queue
+            result = clean_queue()
+            click.echo(f"🧹 已清理 {result['removed']} 条已完成/失败/取消的任务，剩余 {result['remaining']} 条")
+            return
         stats = queue_stats()
         click.echo(f"📋 队列: {stats['queued']} 等待, {stats['running']} 运行中, {stats['total']} 总计\n")
 
