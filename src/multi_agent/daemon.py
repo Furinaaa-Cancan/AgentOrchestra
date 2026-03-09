@@ -48,7 +48,7 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-_PRIORITY_ORDER = {TaskPriority.HIGH: 0, TaskPriority.NORMAL: 1, TaskPriority.LOW: 2}
+_PRIORITY_ORDER = {"high": 0, "normal": 1, "low": 2}
 
 
 # ── Queue Storage ────────────────────────────────────────
@@ -81,13 +81,20 @@ def _load_queue() -> list[dict[str, Any]]:
 
 
 def _save_queue(entries: list[dict[str, Any]]) -> None:
-    """Save queue entries to disk."""
+    """Save queue entries to disk (atomic write)."""
+    import tempfile
     path = _queue_file()
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with path.open("w", encoding="utf-8") as f:
-            for e in entries:
-                f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+        try:
+            with open(fd, "w", encoding="utf-8") as f:
+                for e in entries:
+                    f.write(json.dumps(e, ensure_ascii=False) + "\n")
+            Path(tmp).replace(path)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
     except OSError as exc:
         _log.warning("Failed to save queue: %s", exc)
 

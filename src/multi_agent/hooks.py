@@ -97,12 +97,14 @@ def unregister_hook(event: str, fn: HookFn) -> bool:
 
 def clear_hooks(event: str | None = None) -> None:
     """Clear all hooks, or hooks for a specific event."""
+    global _loaded_from_config
     if event:
         if event in _registry:
             _registry[event] = []
     else:
         for e in _registry:
             _registry[e] = []
+        _loaded_from_config = False
 
 
 def list_hooks() -> dict[str, int]:

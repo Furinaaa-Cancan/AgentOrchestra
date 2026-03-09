@@ -372,3 +372,42 @@ app.use("/api", (req, res, next) => {
 **原因**: `import os` 导入后从未使用。
 **修复**: 删除。
 **教训**: **同 E39，新模块不要复制多余 import。**
+
+---
+
+## 十五、v0.17.0-v0.19.0 严格评审发现的 Bug（5 个）
+
+### E42: `hooks` 未加入 VALID_CONFIG_KEYS
+**文件**: `config.py`
+**原因**: v0.18.0 新增 hooks 系统，`.ma.yaml` 中配置 `hooks:` 段，但 `VALID_CONFIG_KEYS` 缺少该键。
+**影响**: `my doctor` 会误报 "Unknown config keys: hooks"。
+**修复**: 在 `VALID_CONFIG_KEYS` 中添加 `"hooks"`。
+**教训**: **每次新增 .ma.yaml 顶层配置段时，同步更新 VALID_CONFIG_KEYS。**
+
+### E43: daemon `_save_queue` 非原子写入
+**文件**: `daemon.py` `_save_queue()`
+**原因**: 直接 `open("w")` 写文件。daemon 长时间运行时若进程崩溃/被 kill，可能写到一半导致 JSONL 截断损坏。
+**影响**: 队列数据丢失。
+**修复**: 改为 `tempfile.mkstemp()` + `Path.replace()` 原子替换，失败时清理临时文件。
+**教训**: **任何持久化存储（尤其是 daemon 场景）必须用原子写入。参考 SKILLS_CHEATSHEET 第一节。**
+
+### E44: history 命令 `from datetime import datetime` 在循环内
+**文件**: `cli_admin.py` `history()`
+**原因**: `from datetime import datetime` 写在了 for 循环体内（每次迭代重新导入）。
+**影响**: Python 缓存 import，性能影响微小但代码风格差。
+**修复**: 移到循环外。
+**教训**: **import 永远放在函数顶部或模块顶部，不要放在循环/条件内。**
+
+### E45: hooks `_loaded_from_config` 永不重置
+**文件**: `hooks.py`
+**原因**: `clear_hooks()` 清空所有 hook 注册，但不重置 `_loaded_from_config` 标志。导致 daemon 长运行时无法重新加载 config hooks。
+**影响**: daemon 重新加载 hooks 配置失效。
+**修复**: 在 `clear_hooks()` 全量清空时同时重置 `_loaded_from_config = False`。
+**教训**: **全局状态标志和对应的 clear/reset 函数必须成对维护。**
+
+### E46: daemon `_PRIORITY_ORDER` 用 Enum 做 key 但 lookup 用 str
+**文件**: `daemon.py`
+**原因**: `_PRIORITY_ORDER` 的 key 是 `TaskPriority.HIGH` (Enum)，但 `_next_task()` 中 `e.get("priority")` 返回的是纯字符串 `"high"`。虽然 `str(Enum)` 继承让 hash 兼容，但依赖隐式行为是脆弱的。
+**影响**: 若 Enum 实现变化会导致优先级排序失效。
+**修复**: 改为纯字符串 key `{"high": 0, "normal": 1, "low": 2}`。
+**教训**: **持久化数据（JSON/JSONL）中存的是 plain string，查找 dict 的 key 也应是 plain string。**

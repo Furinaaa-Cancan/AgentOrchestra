@@ -50,6 +50,8 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
             click.echo("暂无历史任务记录")
             return
 
+        from datetime import datetime
+
         yamls = sorted(td.glob("*.yaml"), key=lambda p: p.stat().st_mtime, reverse=True)
         shown = 0
         for yf in yamls:
@@ -66,7 +68,6 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
             if detail_task_id and task_id != detail_task_id:
                 continue
             mtime = yf.stat().st_mtime
-            from datetime import datetime
             ts = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
             emoji = {"approved": "✅", "failed": "❌", "cancelled": "🛑", "active": "🔵"}.get(task_status, "⚪")
             click.echo(f"  {emoji} {task_id}  [{task_status}]  {ts}")
