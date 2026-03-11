@@ -265,6 +265,24 @@ def test_session_pull_json_meta_contains_ide_paths_and_template(runner: CliRunne
     assert payload["result_template"]["status"] == "completed|blocked"
 
 
+def test_session_pull_non_actionable_hides_outbox_paths(runner: CliRunner, session_root):
+    task_file = str(session_root["task_file"])
+    res = runner.invoke(main, ["session", "start", "--task", task_file, "--mode", "strict"])
+    assert res.exit_code == 0
+
+    # At RUNNING/builder turn, reviewer is non-actionable.
+    res = runner.invoke(
+        main,
+        ["session", "pull", "--task-id", "task-session-abc", "--agent", "antigravity", "--json-meta"],
+    )
+    assert res.exit_code == 0
+    payload = json.loads(res.output)
+    assert payload["actionable"] is False
+    assert payload["outbox_path"] is None
+    assert payload["outbox_rel_path"] is None
+    assert "你先待命" in payload["ide_message"]
+
+
 def test_session_start_failure_releases_lock_and_marks_failed(runner: CliRunner, session_root):
     task_file = str(session_root["task_file"])
     bad_config = session_root["root"] / "config" / "workmode-bad.yaml"

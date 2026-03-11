@@ -256,6 +256,8 @@ class TestAuthDoctorCommand:
             result = runner.invoke(main, ["auth", "doctor", "--strict"])
         assert result.exit_code != 0
         assert "strict gate failed" in result.output
+        assert "all ready" not in result.output
+        assert "unverified auth" in result.output
 
 
 # ── list-skills command (lines 302-303, 308, 320-321) ────

@@ -936,23 +936,35 @@ def session_pull(task_id: str, agent: str, *, out: str | None = None) -> dict[st
 
     owner_role = str(meta.get("current_role") or "")
     agent_role = str(meta.get("agent_role") or "observer")
+    actionable = bool(meta.get("actionable"))
     effective_role = owner_role if owner_role in {"builder", "reviewer"} else (
         agent_role if agent_role in {"builder", "reviewer"} else "builder"
     )
+
+    if actionable:
+        outbox_path = _outbox_abs_path(effective_role)
+        outbox_rel_path = _outbox_rel_path(effective_role)
+        ide_message = _ide_message_for_role(effective_role)
+    else:
+        outbox_path = None
+        outbox_rel_path = None
+        ide_message = (
+            f"当前轮到 {meta.get('current_agent') or 'unknown'}/{meta.get('current_role') or 'unknown'}，你先待命。"
+        )
 
     return {
         "task_id": task_id,
         "agent": agent,
         "agent_role": agent_role,
         "prompt_path": str(out_path),
-        "actionable": bool(meta.get("actionable")),
+        "actionable": actionable,
         "state": meta.get("state"),
         "current_agent": meta.get("current_agent"),
         "current_role": meta.get("current_role"),
         "task_md_path": str(_task_md_path().resolve()),
-        "outbox_path": _outbox_abs_path(effective_role),
-        "outbox_rel_path": _outbox_rel_path(effective_role),
-        "ide_message": _ide_message_for_role(effective_role),
+        "outbox_path": outbox_path,
+        "outbox_rel_path": outbox_rel_path,
+        "ide_message": ide_message,
         "result_template": _result_template(effective_role),
     }
 
