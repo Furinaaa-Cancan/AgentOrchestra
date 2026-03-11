@@ -272,6 +272,105 @@ class TestSigtermHandler:
         assert exc_info.value.code == 128 + signal.SIGTERM
 
 
+# ── _resolve_and_validate_agents_for_run ─────────────────
+
+
+class TestResolveAndValidateAgentsForRun:
+    def test_strict_auth_rejects_ready_unverified_cli(self):
+        from multi_agent.cli import _resolve_and_validate_agents_for_run
+        from multi_agent.schema import AgentProfile
+
+        builder_profile = AgentProfile(id="cli-builder", driver="cli", command="codex", capabilities=["implementation"])
+        reviewer_profile = AgentProfile(id="file-reviewer", driver="file", capabilities=["review"])
+
+        with patch("multi_agent.contract.load_contract", return_value=object()), \
+             patch("multi_agent.router.load_agents", return_value=[builder_profile, reviewer_profile]), \
+             patch("multi_agent.router.resolve_builder", return_value="cli-builder"), \
+             patch("multi_agent.router.resolve_reviewer", return_value="file-reviewer"), \
+             patch(
+                 "multi_agent.router.get_agent_profile",
+                 side_effect=lambda aid: {"cli-builder": builder_profile, "file-reviewer": reviewer_profile}.get(aid),
+             ), \
+             patch(
+                 "multi_agent.router.probe_agent_readiness",
+                 side_effect=lambda p: (
+                     {
+                         "id": "cli-builder",
+                         "driver": "cli",
+                         "ready": True,
+                         "status": "ready_unverified",
+                         "issues": [],
+                         "warnings": ["auth_check not configured; login status not verified"],
+                         "login_hint": "Run login first",
+                     }
+                     if p.id == "cli-builder"
+                     else {
+                         "id": "file-reviewer",
+                         "driver": "file",
+                         "ready": True,
+                         "status": "manual",
+                         "issues": [],
+                         "warnings": [],
+                         "login_hint": "",
+                     }
+                 ),
+             ):
+            with pytest.raises(click.ClickException, match="auth status not verified"):
+                _resolve_and_validate_agents_for_run(
+                    skill="code-implement",
+                    builder="cli-builder",
+                    reviewer="file-reviewer",
+                    strict_auth=True,
+                )
+
+    def test_non_strict_auth_allows_ready_unverified_cli(self):
+        from multi_agent.cli import _resolve_and_validate_agents_for_run
+        from multi_agent.schema import AgentProfile
+
+        builder_profile = AgentProfile(id="cli-builder", driver="cli", command="codex", capabilities=["implementation"])
+        reviewer_profile = AgentProfile(id="file-reviewer", driver="file", capabilities=["review"])
+
+        with patch("multi_agent.contract.load_contract", return_value=object()), \
+             patch("multi_agent.router.load_agents", return_value=[builder_profile, reviewer_profile]), \
+             patch("multi_agent.router.resolve_builder", return_value="cli-builder"), \
+             patch("multi_agent.router.resolve_reviewer", return_value="file-reviewer"), \
+             patch(
+                 "multi_agent.router.get_agent_profile",
+                 side_effect=lambda aid: {"cli-builder": builder_profile, "file-reviewer": reviewer_profile}.get(aid),
+             ), \
+             patch(
+                 "multi_agent.router.probe_agent_readiness",
+                 side_effect=lambda p: (
+                     {
+                         "id": "cli-builder",
+                         "driver": "cli",
+                         "ready": True,
+                         "status": "ready_unverified",
+                         "issues": [],
+                         "warnings": ["auth_check not configured; login status not verified"],
+                         "login_hint": "Run login first",
+                     }
+                     if p.id == "cli-builder"
+                     else {
+                         "id": "file-reviewer",
+                         "driver": "file",
+                         "ready": True,
+                         "status": "manual",
+                         "issues": [],
+                         "warnings": [],
+                         "login_hint": "",
+                     }
+                 ),
+             ):
+            result = _resolve_and_validate_agents_for_run(
+                skill="code-implement",
+                builder="cli-builder",
+                reviewer="file-reviewer",
+                strict_auth=False,
+            )
+        assert result == ("cli-builder", "file-reviewer")
+
+
 # ── handle_errors edge cases (lines 61, 69) ─────────────
 
 

@@ -354,6 +354,7 @@ def _resolve_and_validate_agents_for_run(
     skill: str,
     builder: str,
     reviewer: str,
+    strict_auth: bool = False,
 ) -> tuple[str, str]:
     """Resolve effective builder/reviewer and fail-fast on not-ready agents."""
     from multi_agent.contract import load_contract
@@ -387,6 +388,13 @@ def _resolve_and_validate_agents_for_run(
         ready = bool(readiness.get("ready", False))
         if ready:
             if profile.driver == "cli" and status == "ready_unverified":
+                if strict_auth:
+                    hint = str(readiness.get("login_hint", "")).strip()
+                    hint_line = f"\nlogin_hint: {hint}" if hint else ""
+                    raise click.ClickException(
+                        f"{role_name} agent '{agent_id}' auth status not verified ({status})\n"
+                        f"run: my auth doctor --agent {agent_id}{hint_line}"
+                    )
                 click.echo(
                     f"⚠️  {role_name} '{agent_id}' 未配置 auth_check，登录状态未验证。"
                     f" 可运行: my auth doctor --agent {agent_id}",
@@ -577,6 +585,7 @@ def go(requirement: str | None, template_id: str | None, var_args: tuple[str, ..
         skill=skill,
         builder=builder,
         reviewer=reviewer,
+        strict_auth=mode.strip().lower() == "strict",
     )
 
     # Task 16: Suggest decompose for complex requirements
