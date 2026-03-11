@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import subprocess
 import sys
 from pathlib import Path
 
 
-def _run(script: Path, args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+def _run(
+    script: Path, args: list[str], *, cwd: Path, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(script), *args],
         cwd=str(cwd),
         text=True,
         capture_output=True,
+        env=env,
         check=False,
     )
 
@@ -189,3 +193,43 @@ def test_lockctl_doctor_fix_skips_ambiguous_missing_relative_path(tmp_path):
     assert res.returncode == 0, res.stderr
     listed = json.loads(res.stdout)
     assert listed[0]["file_path"] == missing_rel
+
+
+def test_lockctl_default_db_is_stable_across_cwd_with_ma_root(tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "lockctl.py"
+
+    # Isolated root for default DB resolution.
+    ma_root = tmp_path / "ma-root"
+    (ma_root / "runtime").mkdir(parents=True, exist_ok=True)
+
+    file_path = tmp_path / "specs" / "task.schema.json"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text("{}", encoding="utf-8")
+
+    env = dict(os.environ)
+    env["MA_ROOT"] = str(ma_root)
+
+    # Acquire without --db from one cwd.
+    res = _run(
+        script,
+        ["acquire", "--task-id", "task-a", "--file-path", str(file_path), "--ttl-sec", "1800"],
+        cwd=repo_root,
+        env=env,
+    )
+    assert res.returncode == 0, res.stderr
+    payload = json.loads(res.stdout)
+    assert payload["status"] == "acquired"
+
+    # Release without --db from a different cwd should still hit same DB.
+    other_cwd = tmp_path / "other-cwd"
+    other_cwd.mkdir(parents=True, exist_ok=True)
+    res = _run(
+        script,
+        ["release", "--task-id", "task-a", "--file-path", str(file_path)],
+        cwd=other_cwd,
+        env=env,
+    )
+    assert res.returncode == 0, res.stderr
+    payload = json.loads(res.stdout)
+    assert payload["status"] == "released"

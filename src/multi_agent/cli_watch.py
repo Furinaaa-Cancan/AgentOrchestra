@@ -81,8 +81,42 @@ def _ensure_evidence(out: dict[str, Any], min_evidence: int) -> None:
         )
 
 
+def _unwrap_protocol_envelope(role: str, data: dict[str, Any], state_values: dict[str, Any]) -> dict[str, Any]:
+    """Accept session envelope payloads in legacy go/watch flow.
+
+    This keeps backward compatibility with old flat JSON while allowing IDEs
+    to always emit the new envelope schema.
+    """
+    result = data.get("result")
+    if "protocol_version" not in data or not isinstance(result, dict):
+        return data
+
+    env_role = str(data.get("role", "")).strip().lower()
+    if env_role and env_role != role:
+        raise ValueError(f"envelope.role mismatch ({env_role} != {role})")
+
+    env_task = str(data.get("task_id", "")).strip()
+    state_task = str(state_values.get("task_id", "")).strip()
+    if env_task and state_task and env_task != state_task:
+        raise ValueError(f"envelope.task_id mismatch ({env_task} != {state_task})")
+
+    out = dict(result)
+    if role == "reviewer":
+        top_level_evidence_files = data.get("evidence_files")
+        if isinstance(top_level_evidence_files, list) and top_level_evidence_files:
+            cur = out.get("evidence_files")
+            merged = list(cur) if isinstance(cur, list) else []
+            for item in top_level_evidence_files:
+                if item not in merged:
+                    merged.append(item)
+            out["evidence_files"] = merged
+    return out
+
+
 def _normalize_resume_output(role: str, data: dict[str, Any], state_values: dict[str, Any]) -> dict[str, Any]:
     """Normalize/validate resume payload for legacy go/watch/done path."""
+    data = _unwrap_protocol_envelope(role, data, state_values)
+
     if role != "reviewer":
         return data
 

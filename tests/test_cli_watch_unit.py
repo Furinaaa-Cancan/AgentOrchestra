@@ -99,6 +99,50 @@ class TestNormalizeResumeOutput:
         result = _normalize_resume_output("reviewer", data, state)
         assert result["decision"] == "approve"
 
+    def test_builder_envelope_unwrapped(self):
+        data = {
+            "protocol_version": "1.0",
+            "task_id": "t1",
+            "role": "builder",
+            "result": {"status": "completed", "summary": "ok"},
+        }
+        state = {"task_id": "t1"}
+        result = _normalize_resume_output("builder", data, state)
+        assert result == {"status": "completed", "summary": "ok"}
+
+    def test_reviewer_envelope_merges_top_level_evidence_files(self):
+        data = {
+            "protocol_version": "1.0",
+            "task_id": "t2",
+            "role": "reviewer",
+            "evidence_files": ["a.md"],
+            "result": {"decision": "approve", "evidence": ["checked"], "evidence_files": ["b.md"]},
+        }
+        state = {"task_id": "t2", "workflow_mode": "strict"}
+        result = _normalize_resume_output("reviewer", data, state)
+        assert result["decision"] == "approve"
+        assert result["evidence_files"] == ["b.md", "a.md"]
+
+    def test_envelope_role_mismatch_raises(self):
+        data = {
+            "protocol_version": "1.0",
+            "task_id": "t3",
+            "role": "reviewer",
+            "result": {"status": "completed"},
+        }
+        with pytest.raises(ValueError, match=r"envelope\.role mismatch"):
+            _normalize_resume_output("builder", data, {"task_id": "t3"})
+
+    def test_envelope_task_id_mismatch_raises(self):
+        data = {
+            "protocol_version": "1.0",
+            "task_id": "task-other",
+            "role": "builder",
+            "result": {"status": "completed"},
+        }
+        with pytest.raises(ValueError, match=r"envelope\.task_id mismatch"):
+            _normalize_resume_output("builder", data, {"task_id": "task-current"})
+
 
 # ── _handle_terminal ─────────────────────────────────────
 

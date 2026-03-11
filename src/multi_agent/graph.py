@@ -483,7 +483,7 @@ def build_node(state: WorkflowState) -> dict[str, Any]:
             record_task_usage(
                 task_id=state.get("task_id", ""),
                 node="build",
-                agent_id=state.get("builder", ""),
+                agent_id=state.get("builder_id", ""),
                 input_tokens=int(tu.get("input_tokens", 0)),
                 output_tokens=int(tu.get("output_tokens", 0)),
                 total_tokens=int(tu.get("total_tokens", 0)),
@@ -613,7 +613,7 @@ def review_node(state: WorkflowState) -> dict[str, Any]:
             record_task_usage(
                 task_id=state.get("task_id", ""),
                 node="review",
-                agent_id=state.get("reviewer", ""),
+                agent_id=state.get("reviewer_id", ""),
                 input_tokens=int(tu.get("input_tokens", 0)),
                 output_tokens=int(tu.get("output_tokens", 0)),
                 total_tokens=int(tu.get("total_tokens", 0)),
@@ -646,7 +646,7 @@ def review_node(state: WorkflowState) -> dict[str, Any]:
             capture_from_review(
                 task_id=state.get("task_id", ""),
                 review_summary=review_text,
-                agent_id=state.get("reviewer", ""),
+                agent_id=state.get("reviewer_id", ""),
             )
 
     review_result = {

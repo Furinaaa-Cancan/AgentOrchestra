@@ -12,13 +12,15 @@ import sys
 import time
 from typing import Any
 
+ROOT_DIR = pathlib.Path(__file__).resolve().parents[1]
+
 
 def normalize_path(path: str, *, cwd: pathlib.Path | None = None) -> str:
     base = cwd or pathlib.Path.cwd()
     p = pathlib.Path(path).expanduser()
     if not p.is_absolute():
         p = base / p
-    real = os.path.realpath(os.path.abspath(str(p)))
+    real = os.path.realpath(os.path.abspath(str(p)))  # noqa: PTH100 - preserve realpath+normcase semantics
     return os.path.normcase(real)
 
 
@@ -40,6 +42,21 @@ def connect(db_path: pathlib.Path) -> sqlite3.Connection:
     )
     conn.commit()
     return conn
+
+
+def resolve_db_path(raw_db: str) -> pathlib.Path:
+    """Resolve DB path deterministically.
+
+    Relative paths are anchored to MA_ROOT when set, otherwise to repository root.
+    This avoids accidental lock DB splits across different shell cwd values.
+    """
+    p = pathlib.Path(raw_db).expanduser()
+    if p.is_absolute():
+        return p
+    ma_root = os.environ.get("MA_ROOT", "").strip()
+    if ma_root:
+        return (pathlib.Path(ma_root).expanduser() / p).resolve()
+    return (ROOT_DIR / p).resolve()
 
 
 def cleanup_expired(conn: sqlite3.Connection, now_ts: int) -> int:
@@ -332,7 +349,11 @@ def command_doctor(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="SQLite lock manager for strict multi-agent editing")
-    parser.add_argument("--db", default="runtime/locks.db", help="Path to sqlite DB")
+    parser.add_argument(
+        "--db",
+        default="runtime/locks.db",
+        help="Path to sqlite DB (relative path is resolved under MA_ROOT or repo root)",
+    )
 
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -366,6 +387,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+    args.db = str(resolve_db_path(args.db))
     if hasattr(args, "ttl_sec") and args.ttl_sec <= 0:
         print("ERROR: ttl-sec must be > 0", file=sys.stderr)
         return 1
