@@ -134,8 +134,8 @@ class TestDoneCommand:
         assert result.exit_code != 0
         assert "reviewer approve requires evidence" in result.output
 
-    def test_reviewer_approve_auto_populates_evidence_from_summary(self, tmp_path):
-        """Approve with summary but no explicit evidence auto-populates evidence."""
+    def test_reviewer_approve_requires_explicit_evidence_under_session_contract(self, tmp_path):
+        """Done now delegates to session_push, which requires explicit evidence on approve."""
         runner = CliRunner()
         good_file = tmp_path / "review.json"
         good_file.write_text(
@@ -155,8 +155,8 @@ class TestDoneCommand:
              patch("multi_agent.cli._detect_active_task", return_value="task-1"), \
              patch("multi_agent.cli._show_waiting"):
             result = runner.invoke(main, ["done", "--file", str(good_file)])
-        assert result.exit_code == 0
-        assert "Submitting reviewer output" in result.output
+        assert result.exit_code != 0
+        assert "reviewer approve requires evidence" in result.output
 
     def test_reviewer_pass_alias_maps_to_approve(self, tmp_path):
         runner = CliRunner()

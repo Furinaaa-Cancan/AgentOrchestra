@@ -31,7 +31,6 @@ from multi_agent.workspace import (
     read_lock,
     read_outbox,
     release_lock,
-    validate_outbox_data,
 )
 from multi_agent.workspace import (
     update_task_yaml as save_task_yaml,
@@ -770,39 +769,32 @@ def done(task_id: str | None, file_path: str | None) -> None:
         role = info.get("role", "builder")
         agent_id = info.get("agent", "?")
 
-    # Read, normalize, and validate output
+    # Read output payload (file/outbox/stdin). Validation/normalization is delegated
+    # to session_push so `done` and `session push` share one strict contract path.
     output_data = _read_done_output(role, file_path)
-    vals = snapshot.values or {}
-    try:
-        output_data = _normalize_resume_output(role, output_data, vals)
-    except ValueError as e:
-        click.echo(f"❌ {e}", err=True)
-        sys.exit(1)
-
-    validation_errors = validate_outbox_data(role, output_data)
-    if validation_errors:
-        click.echo("⚠️  Output validation warnings:", err=True)
-        for ve in validation_errors:
-            click.echo(f"   - {ve}", err=True)
 
     click.echo(f"📤 Submitting {role} output for task {task_id} (IDE: {agent_id})")
 
-    from multi_agent.orchestrator import resume_task
-    try:
-        status = resume_task(app, task_id, output_data)
-    except Exception as e:
-        release_lock()
-        clear_runtime()
-        click.echo(f"❌ Graph error during resume: {e}", err=True)
-        save_task_yaml(task_id, {"status": "failed", "error": str(e)})
-        sys.exit(1)
+    from multi_agent.session import session_push
 
-    # Mark task completed if graph finished
-    if status.is_terminal:
-        final = status.final_status or ""
-        if final:
-            save_task_yaml(task_id, {"status": final})
-        release_lock()
+    temp_path: Path | None = None
+    submit_file_path = file_path
+    if not submit_file_path:
+        import tempfile
+
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as tf:
+            json.dump(output_data, tf, ensure_ascii=False, indent=2)
+            tf.write("\n")
+            temp_path = Path(tf.name)
+        submit_file_path = str(temp_path)
+
+    try:
+        payload = session_push(task_id, agent_id, submit_file_path, app=app)
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+
+    if _is_terminal_final_status(payload.get("final_status")):
         clear_runtime()
 
     _show_waiting(app, config)

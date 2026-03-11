@@ -1163,12 +1163,12 @@ def _post_push_hooks(
     )
 
 
-def session_push(task_id: str, agent: str, file_path: str) -> dict[str, Any]:
+def session_push(task_id: str, agent: str, file_path: str, *, app: Any | None = None) -> dict[str, Any]:
     _validate_task_id(task_id)
     _validate_agent_id(agent)
-    app = _compile_graph_app()
+    graph_app = app or _compile_graph_app()
     cfg = _config(task_id)
-    snapshot = app.get_state(cfg)
+    snapshot = graph_app.get_state(cfg)
     state, current_role, current_agent = _state_from_snapshot(snapshot)
     vals = getattr(snapshot, "values", {}) if snapshot else {}
     workflow_mode = str(vals.get("workflow_mode", "")).lower().strip() or "normal"
@@ -1223,7 +1223,7 @@ def session_push(task_id: str, agent: str, file_path: str) -> dict[str, Any]:
     _submit_memory_candidates(task_id, agent, envelope, result)
 
     with contextlib.suppress(GraphInterrupt):
-        app.invoke(Command(resume=result), cfg)
+        graph_app.invoke(Command(resume=result), cfg)
 
     after = _build_task_status(task_id)
     _write_all_prompts(
