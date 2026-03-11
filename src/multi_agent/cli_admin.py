@@ -547,7 +547,10 @@ def register_admin_commands(main: click.Group) -> None:  # noqa: C901
         for item in checks:
             status = str(item.get("status", "unknown"))
             ready = bool(item.get("ready", False))
-            icon = "✅" if ready else ("⚪" if status in {"manual", "gui_ready", "ready_unverified"} else "❌")
+            if status == "ready_unverified":
+                icon = "⚠️"
+            else:
+                icon = "✅" if ready else ("⚪" if status in {"manual", "gui_ready"} else "❌")
             click.echo(f"  {icon} {item.get('id')} [{item.get('driver')}] — {status}")
 
             if item.get("cli_binary"):
