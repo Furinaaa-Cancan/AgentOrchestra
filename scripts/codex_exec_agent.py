@@ -277,7 +277,7 @@ def main() -> int:
     parser.add_argument("--task-file", required=True)
     parser.add_argument("--outbox-file", required=True)
     parser.add_argument("--timeout-sec", type=int, default=90)
-    parser.add_argument("--project-root", default="/Volumes/Seagate/Multi-Agent")
+    parser.add_argument("--project-root", default=".")
     args = parser.parse_args()
 
     task_file = Path(args.task_file).expanduser().resolve()
