@@ -112,6 +112,115 @@ class TestDecideNode:
         assert "final_status" not in result
         assert result["conversation"][0]["action"] == "request_changes"
 
+    @patch("multi_agent.graph.write_dashboard")
+    def test_strict_hard_gate_blocks_empty_changed_files(self, mock_dash):
+        state = self._base_state(
+            workflow_mode="strict",
+            builder_output={
+                "status": "completed",
+                "summary": "implemented",
+                "changed_files": [],
+                "check_results": {"lint": "pass", "unit_test": "pass", "artifact_checksum": "pass"},
+            },
+            reviewer_output={
+                "decision": "approve",
+                "summary": "Reviewed all modules with concrete checks.",
+                "reasoning": "Verified flows and error paths.",
+                "evidence": ["unit tests + API contract checks"],
+            },
+        )
+        result = decide_node(state)
+        assert "final_status" not in result
+        assert result["conversation"][0]["action"] == "request_changes"
+        assert "changed_files" in result["conversation"][0]["feedback"]
+
+    @patch("multi_agent.graph.write_dashboard")
+    def test_strict_hard_gate_blocks_failed_quality_gate(self, mock_dash):
+        state = self._base_state(
+            workflow_mode="strict",
+            builder_output={
+                "status": "completed",
+                "summary": "implemented",
+                "changed_files": ["/tmp/app/main.py"],
+                "check_results": {"lint": "pass", "unit_test": "fail", "artifact_checksum": "pass"},
+            },
+            reviewer_output={
+                "decision": "approve",
+                "summary": "Reviewed implementation in depth.",
+                "reasoning": "Confirmed behavior except gate mismatch.",
+                "evidence": ["failure reproduced in unit_test"],
+            },
+        )
+        result = decide_node(state)
+        assert "final_status" not in result
+        assert result["conversation"][0]["action"] == "request_changes"
+        assert "quality gate" in result["conversation"][0]["feedback"]
+
+    @patch("multi_agent.graph.write_dashboard")
+    def test_strict_hard_gate_blocks_fallback_marker(self, mock_dash):
+        state = self._base_state(
+            workflow_mode="strict",
+            builder_output={
+                "status": "completed",
+                "summary": "implemented",
+                "changed_files": ["/tmp/app/main.py"],
+                "check_results": {"lint": "pass", "unit_test": "pass", "artifact_checksum": "pass"},
+                "risks": ["adapter fallback used rc=124"],
+            },
+            reviewer_output={
+                "decision": "approve",
+                "summary": "Independent verification completed.",
+                "reasoning": "Validated outputs and boundaries.",
+                "evidence": ["manual checks", "tests rerun"],
+            },
+        )
+        result = decide_node(state)
+        assert "final_status" not in result
+        assert result["conversation"][0]["action"] == "request_changes"
+        assert "fallback marker" in result["conversation"][0]["feedback"]
+
+    @patch("multi_agent.graph.write_dashboard")
+    def test_strict_hard_gate_allows_business_fallback_word(self, mock_dash):
+        state = self._base_state(
+            workflow_mode="strict",
+            builder_output={
+                "status": "completed",
+                "summary": "Implemented fallback strategy for cache miss path.",
+                "changed_files": ["/tmp/app/main.py"],
+                "check_results": {"lint": "pass", "unit_test": "pass", "artifact_checksum": "pass"},
+            },
+            reviewer_output={
+                "decision": "approve",
+                "summary": "Independent verification completed.",
+                "reasoning": "Validated all done criteria and regression checks.",
+                "evidence": ["unit tests rerun", "manual endpoint verification"],
+            },
+        )
+        result = decide_node(state)
+        assert result["final_status"] == "approved"
+
+    @patch("multi_agent.graph.write_dashboard")
+    def test_strict_hard_gate_blocks_missing_review_evidence(self, mock_dash):
+        state = self._base_state(
+            workflow_mode="strict",
+            builder_output={
+                "status": "completed",
+                "summary": "implemented",
+                "changed_files": ["/tmp/app/main.py"],
+                "check_results": {"lint": "pass", "unit_test": "pass", "artifact_checksum": "pass"},
+            },
+            reviewer_output={
+                "decision": "approve",
+                "summary": "Deep review completed.",
+                "reasoning": "Checked behavior and regression risk.",
+                "evidence": [],
+            },
+        )
+        result = decide_node(state)
+        assert "final_status" not in result
+        assert result["conversation"][0]["action"] == "request_changes"
+        assert "evidence" in result["conversation"][0]["feedback"]
+
     @patch("multi_agent.graph.archive_conversation")
     @patch("multi_agent.graph.write_dashboard")
     def test_strict_mode_can_disable_rubber_stamp_block(self, mock_dash, mock_archive):
@@ -268,6 +377,27 @@ class TestBuildNodeErrorDetection:
         assert result["final_status"] == "failed"
         assert "timed out" in result["error"]
         # Should NOT have builder_output (i.e., should not proceed to reviewer)
+        assert "builder_output" not in result
+
+    @patch("multi_agent.graph.write_dashboard")
+    @patch("multi_agent.graph._write_task_md")
+    @patch("multi_agent.graph.interrupt")
+    def test_cli_blocked_output_fails_build(self, mock_interrupt, mock_task_md, mock_dash):
+        from multi_agent.graph import build_node
+        mock_interrupt.return_value = {"status": "blocked", "summary": "waiting on credentials"}
+        state = {
+            "builder_id": "codex-cli",
+            "reviewer_id": "cursor",
+            "started_at": 0,
+            "timeout_sec": 1800,
+            "skill_id": "code-implement",
+            "task_id": "task-test-blocked",
+            "done_criteria": ["test"],
+            "conversation": [],
+        }
+        result = build_node(state)
+        assert result["final_status"] == "failed"
+        assert "waiting on credentials" in result["error"]
         assert "builder_output" not in result
 
     @patch("multi_agent.graph.load_contract")

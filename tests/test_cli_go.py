@@ -277,6 +277,22 @@ class TestGoCommand:
         assert result.exit_code == 0
         rd.assert_called_once()
 
+    def test_auto_decompose_for_complex_cli_builder(self, runner):
+        with patch("multi_agent.graph.compile_graph", return_value=_mock_app()), \
+             patch("multi_agent.cli.ensure_workspace"), \
+             patch("multi_agent.cli.read_lock", return_value=None), \
+             patch("multi_agent.cli._detect_active_task", return_value=None), \
+             patch("multi_agent.cli.clear_runtime"), \
+             patch("multi_agent.cli.acquire_lock"), \
+             patch("multi_agent.cli._resolve_and_validate_agents_for_run", return_value=("codex-cli", "codex-cli")), \
+             patch("multi_agent.decompose.estimate_complexity", return_value="complex"), \
+             patch("multi_agent.driver.get_agent_driver", return_value={"driver": "cli", "command": "codex exec ..."}), \
+             patch("multi_agent.cli_decompose._run_decomposed") as rd:
+            result = runner.invoke(main, ["go", "complex task for cli builder", "--no-watch"])
+        assert result.exit_code == 0
+        rd.assert_called_once()
+        assert "自动启用分解执行" in result.output
+
     def test_missing_requirement(self, runner):
         result = runner.invoke(main, ["go"])
         assert result.exit_code != 0

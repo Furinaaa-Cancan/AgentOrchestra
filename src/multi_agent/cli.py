@@ -590,9 +590,18 @@ def go(requirement: str | None, template_id: str | None, var_args: tuple[str, ..
     # Task 16: Suggest decompose for complex requirements
     if not decompose:
         from multi_agent.decompose import estimate_complexity
+        from multi_agent.driver import get_agent_driver
+
         complexity = estimate_complexity(requirement)
         if complexity == "complex":
             click.echo("⚠️  需求较复杂，建议使用 --decompose 模式", err=True)
+            builder_driver = str(get_agent_driver(builder).get("driver", "")).strip().lower()
+            if builder_driver == "cli":
+                decompose = True
+                click.echo(
+                    "🤖 检测到复杂任务且 builder 为 CLI，已自动启用分解执行（--decompose）以提高闭环成功率。",
+                    err=True,
+                )
 
     # Enforce single active task — prevent data conflicts
     app = compile_graph()

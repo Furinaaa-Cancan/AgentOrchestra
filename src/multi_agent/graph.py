@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import json
 import logging
 import sqlite3
 import time
@@ -19,6 +20,12 @@ from langgraph.types import interrupt
 from typing_extensions import TypedDict
 
 from multi_agent._utils import DEFAULT_RUBBER_STAMP_PHRASES as _RUBBER_STAMP_PHRASES
+from multi_agent._utils import (
+    count_nonempty_entries as _count_nonempty_entries,
+)
+from multi_agent._utils import (
+    positive_int as _positive_int,
+)
 from multi_agent.config import store_db_path
 from multi_agent.contract import load_contract, validate_preconditions
 from multi_agent.dashboard import write_dashboard
@@ -53,6 +60,14 @@ _log = logging.getLogger(__name__)
 
 MAX_REQUEST_CHANGES = 3  # DDI research: effectiveness decays 60-80% after 2-3 attempts
 MAX_TASK_DURATION_SEC = 7200  # 2h total task guard (OWASP LLM10:2025 DoW prevention)
+_PASS_GATE_VALUES = frozenset({"pass", "passed", "ok", "success", "true"})
+_FALLBACK_MARKERS = (
+    "adapter fallback",
+    "_adapter_fallback",
+    "codex rc=",
+    "rc=124",
+    "fallback used rc=",
+)
 
 
 # ── Node Decorator ────────────────────────────────────────
@@ -491,8 +506,9 @@ def build_node(state: WorkflowState) -> dict[str, Any]:
                 model=str(tu.get("model", "")),
             )
 
-    # Detect CLI driver error output — don't waste reviewer's time
-    if result.get("status") == "error":
+    # Detect CLI driver blocked/error output — don't waste reviewer's time
+    status_lower = str(result.get("status", "")).lower().strip()
+    if status_lower in {"error", "blocked"}:
         error_msg = result.get("summary", "unknown CLI error")
         return {
             "error": f"Builder failed: {error_msg}",
@@ -851,6 +867,116 @@ def _decide_reject_retry(
 
 # ── Node 4: Decide ────────────────────────────────────────
 
+
+def _contains_fallback_marker(payload: dict[str, Any] | None) -> bool:
+    """Detect synthetic/fallback outputs that should not be auto-approved."""
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("_adapter_fallback") is True:
+        return True
+    with contextlib.suppress(Exception):
+        raw = json.dumps(payload, ensure_ascii=False).lower()
+        return any(marker in raw for marker in _FALLBACK_MARKERS)
+    return False
+
+
+def _is_gate_pass(value: Any) -> bool:
+    return str(value).strip().lower() in _PASS_GATE_VALUES
+
+
+def _reviewer_evidence_requirements(
+    state: WorkflowState, *, strict_mode: bool,
+) -> tuple[bool, int]:
+    review_policy = state.get("review_policy")
+    reviewer_cfg = review_policy.get("reviewer") if isinstance(review_policy, dict) else None
+    if not isinstance(reviewer_cfg, dict):
+        reviewer_cfg = {}
+    require = bool(reviewer_cfg.get("require_evidence_on_approve", strict_mode))
+    minimum = _positive_int(reviewer_cfg.get("min_evidence_items"), 1) if require else 0
+    return require, minimum
+
+
+def _approve_hard_gate_violations(
+    state: WorkflowState, reviewer_output: dict[str, Any], *, strict_mode: bool,
+) -> list[str]:
+    """Validate approve decision against strict semantic gates."""
+    if not strict_mode:
+        return []
+
+    violations: list[str] = []
+    builder_output = state.get("builder_output")
+    if not isinstance(builder_output, dict):
+        # Direct unit invocations of decide_node may skip builder context.
+        # Enforce hard gates only when builder_output is available.
+        return []
+
+    builder_status = str(builder_output.get("status", "")).lower().strip()
+    if builder_status in {"error", "blocked", "failed"}:
+        violations.append(f"builder status is {builder_status!r}")
+
+    changed_files = builder_output.get("changed_files")
+    if not isinstance(changed_files, list) or not any(str(p).strip() for p in changed_files):
+        violations.append("builder changed_files is empty")
+
+    check_results = builder_output.get("check_results")
+    if not isinstance(check_results, dict):
+        violations.append("builder check_results missing")
+    else:
+        required_gates: list[str]
+        with contextlib.suppress(Exception):
+            contract = load_contract(state.get("skill_id", "code-implement"))
+            required_gates = list(contract.quality_gates)  # type: ignore[assignment]
+        if "required_gates" not in locals():
+            required_gates = ["lint", "unit_test", "artifact_checksum"]
+
+        for gate in required_gates:
+            gate_value = check_results.get(gate)
+            if gate_value is None:
+                violations.append(f"missing quality gate: {gate}")
+            elif not _is_gate_pass(gate_value):
+                violations.append(f"quality gate {gate} failed: {gate_value}")
+
+    if builder_output.get("_empty_changeset_warning"):
+        violations.append("builder flagged empty changeset warning")
+
+    gate_warnings = builder_output.get("gate_warnings")
+    if isinstance(gate_warnings, list) and _count_nonempty_entries(gate_warnings) > 0:
+        violations.append("builder has unresolved gate_warnings")
+
+    if _contains_fallback_marker(builder_output):
+        violations.append("builder output contains fallback marker")
+    if _contains_fallback_marker(reviewer_output):
+        violations.append("reviewer output contains fallback marker")
+
+    require_evidence, min_evidence = _reviewer_evidence_requirements(state, strict_mode=strict_mode)
+    if require_evidence:
+        evidence_count = _count_nonempty_entries(reviewer_output.get("evidence"))
+        evidence_count += _count_nonempty_entries(reviewer_output.get("evidence_files"))
+        if evidence_count < min_evidence:
+            violations.append(
+                f"review evidence too weak: need >= {min_evidence}, got {evidence_count}"
+            )
+
+    return violations
+
+
+def _block_approve_on_hard_gate(
+    task_id: str, reviewer_output: dict[str, Any], violations: list[str],
+) -> tuple[dict[str, Any], str]:
+    _log.warning(
+        "Strict mode hard-gate blocked approve for task %s: %s",
+        task_id, "; ".join(violations),
+    )
+    reviewer_output = dict(reviewer_output)
+    reviewer_output["decision"] = "request_changes"
+    reviewer_output["feedback"] = (
+        "审批被 strict 硬门禁拦截，请先修复以下问题后再提交 approve:\n"
+        + "\n".join(f"- {item}" for item in violations)
+    )
+    reviewer_output["_hard_gate_blocked"] = True
+    return reviewer_output, "request_changes"
+
+
 def _block_rubber_stamp(
     task_id: str, reviewer_output: dict[str, Any],
 ) -> tuple[dict[str, Any], str]:
@@ -920,6 +1046,14 @@ def decide_node(state: WorkflowState) -> dict[str, Any]:
         reviewer_output, decision = _block_rubber_stamp(
             state.get("task_id", "?"), reviewer_output,
         )
+    if decision == "approve":
+        hard_gate_violations = _approve_hard_gate_violations(
+            state, reviewer_output, strict_mode=strict_mode,
+        )
+        if hard_gate_violations:
+            reviewer_output, decision = _block_approve_on_hard_gate(
+                state.get("task_id", "?"), reviewer_output, hard_gate_violations,
+            )
     if review_round > 0:
         graph_stats.record_retry_outcome(review_round, decision)
 

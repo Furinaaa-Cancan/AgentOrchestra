@@ -642,7 +642,7 @@ def _close_terminals_and_cleanup(visible: bool, groups: list[list[Any]], parent_
     from multi_agent.config import subtask_workspace
     for group in groups:
         for st in group:
-            sid = f"{parent_task_id}-{st.id}"
+            sid = st.id
             with contextlib.suppress(OSError):
                 shutil.rmtree(str(subtask_workspace(sid)), ignore_errors=True)
 
@@ -737,29 +737,34 @@ def _run_decomposed(
 
     task_idx = 1
     abort = False
-    for _group_idx, group in enumerate(groups, 1):
-        if abort:
-            break
+    try:
+        for _group_idx, group in enumerate(groups, 1):
+            if abort:
+                break
 
-        if len(group) == 1:
-            # Single task in group — run sequentially (original path)
-            st = group[0]
-            action = _exec_ctx.run_one(
-                task_idx, total, st, prior_results, completed_ids, failed_ids, sorted_tasks,
-            )
-            task_idx += 1
-            if action == "return":
-                return
-            if action == "break":
-                abort = True
-        else:
-            # Multiple independent tasks — run in parallel
-            _exec_ctx.run_group_parallel(
-                group, task_idx, total, prior_results, completed_ids, failed_ids,
-            )
-            task_idx += len(group)
-
-    _close_terminals_and_cleanup(visible, groups, parent_task_id)
+            # In visible mode, prefer deterministic serial execution to avoid
+            # terminal races and keep the UX in a strict closed loop.
+            if len(group) == 1 or visible:
+                if visible and len(group) > 1:
+                    click.echo("  👁️ visible 模式：并行组降级为串行执行（优先稳定闭环）")
+                for st in group:
+                    action = _exec_ctx.run_one(
+                        task_idx, total, st, prior_results, completed_ids, failed_ids, sorted_tasks,
+                    )
+                    task_idx += 1
+                    if action == "return":
+                        return
+                    if action == "break":
+                        abort = True
+                        break
+            else:
+                # Multiple independent tasks — run in parallel (headless mode).
+                _exec_ctx.run_group_parallel(
+                    group, task_idx, total, prior_results, completed_ids, failed_ids,
+                )
+                task_idx += len(group)
+    finally:
+        _close_terminals_and_cleanup(visible, groups, parent_task_id)
 
     # Phase 4: Aggregate & report
     _finalize_decompose(

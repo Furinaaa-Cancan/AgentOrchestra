@@ -10,6 +10,7 @@ These are re-exported from cli.py to preserve existing mock paths.
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from typing import Any
@@ -30,9 +31,51 @@ from multi_agent.workspace import (
 from multi_agent.workspace import (
     update_task_yaml as save_task_yaml,
 )
+from multi_agent.trace import append_trace_event
 
 # Serializes resume_task + sync so parallel subtasks don't corrupt global TASK.md/outbox
 _resume_lock = threading.Lock()
+
+
+def _state_label_from_status(status: Any) -> str:
+    """Best-effort normalized state label for trace events."""
+    state = getattr(status, "state", None)
+    if isinstance(state, str) and state.strip():
+        return state.strip().upper()
+    final = str(getattr(status, "final_status", "") or "").lower().strip()
+    mapping = {
+        "approved": "DONE",
+        "done": "DONE",
+        "failed": "FAILED",
+        "escalated": "ESCALATED",
+        "cancelled": "CANCELLED",
+    }
+    if final in mapping:
+        return mapping[final]
+    waiting_role = str(getattr(status, "waiting_role", "") or "").lower().strip()
+    if waiting_role == "builder":
+        return "RUNNING"
+    if waiting_role == "reviewer":
+        return "VERIFYING"
+    return "UNKNOWN"
+
+
+def _terminal_next_steps(task_id: str, final: str, error: str) -> list[str]:
+    """Actionable next-step hints for failed/escalated/cancelled terminal states."""
+    final_l = (final or "").lower().strip()
+    if final_l in {"approved", "done"}:
+        return []
+
+    tips = [
+        f"             下一步: my trace --task-id {task_id} --format tree",
+        f"             下一步: my status --task-id {task_id}",
+    ]
+    err_l = (error or "").lower()
+    if "rc=124" in err_l or "timeout" in err_l:
+        tips.append("             建议: 调大 CLI 超时（--timeout 或适配器 --timeout-sec）后重试")
+    if "not ready" in err_l or "auth" in err_l:
+        tips.append("             建议: 先执行 my auth doctor --agent <agent>")
+    return tips
 
 
 def _sync_subtask_workspace(subtask_id: str) -> None:
@@ -165,6 +208,21 @@ def _handle_terminal(
 ) -> None:
     """Handle terminal task status in watch loop."""
     final = status.final_status or "done"
+    error = status.error or ""
+    with contextlib.suppress(Exception):
+        append_trace_event(
+            task_id=task_id,
+            event_type="state_update",
+            actor="orchestrator",
+            role="orchestrator",
+            state=_state_label_from_status(status),
+            details={
+                "final_status": final,
+                "error": error or None,
+                "source": "watch",
+            },
+            lane_id="main",
+        )
     if final:
         save_task_yaml(task_id, {"status": final})
     if manage_lock:
@@ -182,8 +240,9 @@ def _handle_terminal(
         if retries:
             click.echo(f"             (经过 {retries} 次重试)")
     else:
-        error = status.error or ""
         click.echo(f"[{ts}] ❌ Task finished. Status: {final}{' — ' + error if error else ''}")
+        for tip in _terminal_next_steps(task_id, final, error):
+            click.echo(tip)
 
 
 def _show_next_agent(next_status: Any, ts: str, *, visible: bool = False, subtask_id: str | None = None, terminal_slot: int | None = None) -> None:
@@ -211,6 +270,16 @@ def _process_outbox(poller: Any, role: str, agent: str, status: Any, app: Any, t
         if detected_role == role:
             step_label = "Build" if role == "builder" else "Review"
             click.echo(f"[{ts}] 📥 {step_label} 完成 ({agent})")
+            with contextlib.suppress(Exception):
+                append_trace_event(
+                    task_id=task_id,
+                    event_type="handoff_submit",
+                    actor=agent,
+                    role=role,
+                    state=_state_label_from_status(status),
+                    details={"source": "watch", "detected_role": detected_role},
+                    lane_id="main",
+                )
             try:
                 data = _normalize_resume_output(role, data, status.values)
             except ValueError as e:
@@ -233,6 +302,20 @@ def _process_outbox(poller: Any, role: str, agent: str, status: Any, app: Any, t
                     clear_runtime()
                 click.echo(f"[{ts}] ❌ Error: {e}", err=True)
                 save_task_yaml(task_id, {"status": "failed", "error": str(e)})
+                with contextlib.suppress(Exception):
+                    append_trace_event(
+                        task_id=task_id,
+                        event_type="state_update",
+                        actor="orchestrator",
+                        role="orchestrator",
+                        state="FAILED",
+                        details={
+                            "final_status": "failed",
+                            "error": str(e),
+                            "source": "watch_resume_exception",
+                        },
+                        lane_id="main",
+                    )
                 return "return"
 
             if not next_status.is_terminal and next_status.waiting_role:

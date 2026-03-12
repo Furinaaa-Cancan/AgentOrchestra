@@ -37,6 +37,13 @@ agents:
     app_name: "Codex"
     capabilities: [planning, implementation, testing, review, docs]
 
+  - id: codex-cli
+    driver: cli
+    command: "python3 {project_root}/scripts/codex_exec_agent.py --task-file {task_file} --outbox-file {outbox_file} --timeout-sec 180"
+    auth_check: "codex --version"
+    login_hint: "Run: codex login"
+    capabilities: [planning, implementation, testing, review, docs, security]
+
   - id: aider
     driver: cli
     command: "aider --message 'Read {task_file} and complete the task. Save the JSON output to {outbox_file}' --yes"

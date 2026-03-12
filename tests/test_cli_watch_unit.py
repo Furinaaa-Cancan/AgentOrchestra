@@ -157,41 +157,52 @@ class TestHandleTerminal:
 
     def test_approved_shows_success(self, capsys):
         status = self._make_status("approved", values={"builder_output": {"summary": "All done"}})
-        _handle_terminal(status, "t-1", "00:10", manage_lock=False)
+        with patch("multi_agent.cli_watch.append_trace_event") as mock_trace:
+            _handle_terminal(status, "t-1", "00:10", manage_lock=False)
         out = capsys.readouterr().out
         assert "✅" in out
         assert "All done" in out
+        mock_trace.assert_called_once()
 
     def test_approved_with_retries(self, capsys):
         status = self._make_status("approved", values={"retry_count": 2})
-        _handle_terminal(status, "t-1", "01:00", manage_lock=False)
+        with patch("multi_agent.cli_watch.append_trace_event") as mock_trace:
+            _handle_terminal(status, "t-1", "01:00", manage_lock=False)
         out = capsys.readouterr().out
         assert "2" in out
+        mock_trace.assert_called_once()
 
     def test_failed_shows_error(self, capsys):
         status = self._make_status("failed", error="timeout")
-        _handle_terminal(status, "t-1", "00:30", manage_lock=False)
+        with patch("multi_agent.cli_watch.append_trace_event") as mock_trace:
+            _handle_terminal(status, "t-1", "00:30", manage_lock=False)
         out = capsys.readouterr().out
         assert "❌" in out
         assert "timeout" in out
+        assert "my trace --task-id t-1 --format tree" in out
+        mock_trace.assert_called_once()
 
     @patch("multi_agent.cli_watch.release_lock")
     @patch("multi_agent.cli_watch.clear_runtime")
     @patch("multi_agent.cli_watch.save_task_yaml")
-    def test_manage_lock_releases(self, mock_save, mock_clear, mock_release):
+    @patch("multi_agent.cli_watch.append_trace_event")
+    def test_manage_lock_releases(self, mock_trace, mock_save, mock_clear, mock_release):
         status = self._make_status("done")
         _handle_terminal(status, "t-1", "00:05", manage_lock=True)
         mock_release.assert_called_once()
         mock_clear.assert_called_once()
+        mock_trace.assert_called_once()
 
     @patch("multi_agent.cli_watch.release_lock")
     @patch("multi_agent.cli_watch.clear_runtime")
     @patch("multi_agent.cli_watch.save_task_yaml")
-    def test_no_manage_lock_skips_release(self, mock_save, mock_clear, mock_release):
+    @patch("multi_agent.cli_watch.append_trace_event")
+    def test_no_manage_lock_skips_release(self, mock_trace, mock_save, mock_clear, mock_release):
         status = self._make_status("done")
         _handle_terminal(status, "t-1", "00:05", manage_lock=False)
         mock_release.assert_not_called()
         mock_clear.assert_not_called()
+        mock_trace.assert_called_once()
 
 
 # ── _show_waiting ────────────────────────────────────────

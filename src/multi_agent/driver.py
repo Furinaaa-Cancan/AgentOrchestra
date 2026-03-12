@@ -267,9 +267,11 @@ def spawn_cli_agent(
 
     # D1+C3: Build command list with shell=False to eliminate injection risk.
     # Paths are inserted literally (no quoting needed without shell).
+    resolved_project_root = project_dir or str(Path.cwd())
     cmd_str = command_template.format(
         task_file=task_file,
         outbox_file=outbox_file,
+        project_root=resolved_project_root,
     )
     cmd_list = shlex.split(cmd_str)
 
@@ -279,7 +281,7 @@ def spawn_cli_agent(
             proc = subprocess.Popen(
                 cmd_list,
                 shell=False,
-                cwd=project_dir or str(Path.cwd()),
+                cwd=resolved_project_root,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -522,7 +524,12 @@ def dispatch_visible(
     else:
         task_file = str(workspace_dir() / "TASK.md")
         outbox_file = str(outbox_dir() / f"{role}.json")
-    cmd_str = command_template.format(task_file=task_file, outbox_file=outbox_file)
+    resolved_project_root = project_dir or str(Path.cwd())
+    cmd_str = command_template.format(
+        task_file=task_file,
+        outbox_file=outbox_file,
+        project_root=resolved_project_root,
+    )
 
     # Remove stale .done file from previous close — prevents new wrapper from
     # exiting immediately when a slot is reused after close_all_visible_terminals.
@@ -696,9 +703,13 @@ def close_all_visible_terminals() -> None:
             if key.startswith("slot:"):
                 slot = int(key.split(":")[1])
                 tdir = _trigger_dir(None, terminal_slot=slot)
+            elif ":" in key:
+                # Legacy non-slot key format "agent:role" maps to workspace root.
+                # Treating it as subtask_id would fail validation because ':' is invalid.
+                tdir = _trigger_dir(None)
             else:
-                # Legacy key is a subtask_id or "agent:role".
-                # Subtask workspace may already be cleaned up — suppress errors.
+                # Legacy key is a subtask_id. Subtask workspace may already be
+                # cleaned up — suppress errors.
                 tdir = _trigger_dir(key)
             done = tdir / ".done"
             done.parent.mkdir(parents=True, exist_ok=True)

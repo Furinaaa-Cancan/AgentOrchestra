@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -14,6 +15,7 @@ import pytest
 
 from multi_agent.cli_decompose import (
     _collect_sub_result,
+    _close_terminals_and_cleanup,
     _DecomposeExecContext,
     _display_sub_tasks,
     _finalize_decompose,
@@ -586,10 +588,11 @@ class TestRunDecomposed:
     @patch("multi_agent.cli_decompose._display_sub_tasks")
     @patch("multi_agent.cli_decompose._load_decompose_checkpoint", return_value=([], set(), set()))
     @patch("multi_agent.cli_decompose._finalize_decompose")
+    @patch("multi_agent.cli_decompose._close_terminals_and_cleanup")
     @patch("multi_agent.workspace.save_task_yaml")
     @patch("multi_agent.meta_graph.save_checkpoint")
     def test_run_one_return_exits(
-        self, mock_ckpt, mock_save, mock_finalize, mock_load_ckpt,
+        self, mock_ckpt, mock_save, mock_cleanup, mock_finalize, mock_load_ckpt,
         mock_display, mock_validate, mock_obtain,
     ):
         """run_one returns 'return' → early exit."""
@@ -597,8 +600,9 @@ class TestRunDecomposed:
         mock_obtain.return_value = _decompose_result(tasks)
         mock_validate.return_value = tasks
         with patch.object(_DecomposeExecContext, "run_one", return_value="return"):
-            self._call()
+            self._call(visible=True)
         mock_finalize.assert_not_called()
+        mock_cleanup.assert_called_once()
 
     @patch("multi_agent.cli_decompose._obtain_decompose_result")
     @patch("multi_agent.cli_decompose._validate_and_sort")
@@ -617,6 +621,31 @@ class TestRunDecomposed:
         mock_validate.return_value = tasks
         with patch.object(_DecomposeExecContext, "run_one", return_value="break"):
             self._call()
+        mock_finalize.assert_called_once()
+
+    @patch("multi_agent.cli_decompose._obtain_decompose_result")
+    @patch("multi_agent.cli_decompose._validate_and_sort")
+    @patch("multi_agent.cli_decompose._display_sub_tasks")
+    @patch("multi_agent.cli_decompose._load_decompose_checkpoint", return_value=([], set(), set()))
+    @patch("multi_agent.cli_decompose._finalize_decompose")
+    @patch("multi_agent.cli_decompose._close_terminals_and_cleanup")
+    @patch("multi_agent.workspace.save_task_yaml")
+    @patch("multi_agent.meta_graph.save_checkpoint")
+    def test_visible_mode_downgrades_parallel_group(
+        self, mock_ckpt, mock_save, mock_cleanup, mock_finalize, mock_load_ckpt,
+        mock_display, mock_validate, mock_obtain,
+    ):
+        tasks = [_sub("a"), _sub("b"), _sub("c", deps=["a", "b"])]
+        mock_obtain.return_value = _decompose_result(tasks)
+        mock_validate.return_value = tasks
+        with patch("multi_agent.decompose.topo_sort_grouped", return_value=[[tasks[0], tasks[1]], [tasks[2]]]), \
+             patch.object(_DecomposeExecContext, "run_one", return_value=None) as mock_run_one, \
+             patch.object(_DecomposeExecContext, "run_group_parallel") as mock_run_group:
+            self._call(visible=True)
+
+        assert mock_run_group.call_count == 0
+        assert mock_run_one.call_count == 3
+        mock_cleanup.assert_called_once()
         mock_finalize.assert_called_once()
 
 
@@ -638,3 +667,14 @@ class TestDisplaySubTasksExtended:
         out = capsys.readouterr().out
         assert "a" in out
         assert "b" in out
+
+
+class TestCloseTerminalsAndCleanup:
+    def test_cleanup_uses_subtask_id_without_parent_prefix(self):
+        st = SimpleNamespace(id="audit-log")
+        with patch("multi_agent.driver.close_all_visible_terminals"), \
+             patch("time.sleep", return_value=None), \
+             patch("multi_agent.config.subtask_workspace", side_effect=lambda sid: Path(f"/tmp/{sid}")) as mock_ws, \
+             patch("multi_agent.cli_decompose.shutil.rmtree"):
+            _close_terminals_and_cleanup(True, [[st]], "parent-xyz")
+        mock_ws.assert_called_with("audit-log")

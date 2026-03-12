@@ -492,3 +492,23 @@ class TestDispatchAgent:
             result = driver.dispatch_agent("codex", "reviewer", subtask_id="sub-5")
         assert result.mode == "degraded"
         assert "subtasks/sub-5/TASK.md" in result.message
+
+
+class TestVisibleTerminalCleanup:
+    def test_close_all_visible_terminals_handles_agent_role_key(self, tmp_path):
+        original = dict(driver._open_terminals)
+        try:
+            driver._open_terminals.clear()
+            driver._open_terminals["mockcli1:builder"] = "/tmp/wrapper-a.sh"
+            driver._open_terminals["subtask-1"] = "/tmp/wrapper-b.sh"
+
+            with patch("multi_agent.driver.workspace_dir", return_value=tmp_path), \
+                 patch("multi_agent.driver.subtask_outbox_dir", side_effect=lambda sid: tmp_path / "subtasks" / sid / "outbox"):
+                driver.close_all_visible_terminals()
+
+            assert (tmp_path / ".done").exists()
+            assert (tmp_path / "subtasks" / "subtask-1" / ".done").exists()
+            assert driver._open_terminals == {}
+        finally:
+            driver._open_terminals.clear()
+            driver._open_terminals.update(original)
