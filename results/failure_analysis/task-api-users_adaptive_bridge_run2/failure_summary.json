@@ -1,0 +1,15 @@
+{
+  "task_id": "task-api-users",
+  "run_idx": 2,
+  "condition": "adaptive_bridge",
+  "condition_label": "C6: Adaptive+Bridge",
+  "a_tests": "8/8",
+  "b_tests": "0/17",
+  "b_wall_sec": 1805.1,
+  "b_cost_usd": 0.0,
+  "b_tokens": 0,
+  "sub_task_count": 3,
+  "bridge_violations": 0,
+  "decompose_decision": "",
+  "b_file": "results/experiment_v2/adaptive_bridge/task-api-users/run_2.json"
+}
